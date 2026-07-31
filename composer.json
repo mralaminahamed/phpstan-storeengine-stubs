@@ -21,13 +21,13 @@
     ],
     "require": {
         "php": ">=7.4",
-        "php-stubs/wordpress-stubs": "^5.3 || ^6.0"
+        "php-stubs/wordpress-stubs": "^5.3 || ^6.0 || ^7.0"
     },
     "require-dev": {
-        "php-stubs/generator": "^0.8.0",
+        "php-stubs/generator": "^0.9.0",
         "phpstan/phpstan": "^2.0",
-        "phpunit/phpunit": "^7.5 || ^8.5 || ^9.5",
-        "squizlabs/php_codesniffer": "^3.7"
+        "phpunit/phpunit": "^9.5 || ^10.5 || ^11.0",
+        "squizlabs/php_codesniffer": "^3.13"
     },
     "suggest": {
         "szepeviktor/phpstan-wordpress": "WordPress extensions for PHPStan",
