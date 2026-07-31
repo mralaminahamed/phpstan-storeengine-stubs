@@ -1,0 +1,5 @@
+/vendor/
+/composer.lock
+/report.txt
+.DS_Store
+.DS_Store

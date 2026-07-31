@@ -1,0 +1,8 @@
+<?php
+/**
+ * Generated stub declarations for StoreEngine.
+ * @see https://storeengine.pro/
+ * @see https://github.com/mralaminahamed/phpstan-storeengine-stubs
+ */
+
+\define('STOREENGINE_CHECKOUT', \true);

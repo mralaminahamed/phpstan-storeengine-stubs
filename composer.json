@@ -1,0 +1,95 @@
+{
+    "name": "mralaminahamed/storeengine-stubs",
+    "description": "StoreEngine function and class declaration stubs for static analysis.",
+    "type": "library",
+    "keywords": [
+        "storeengine",
+        "wordpress",
+        "static analysis",
+        "phpstan",
+        "stubs",
+        "ecommerce",
+        "wordpress-plugin"
+    ],
+    "homepage": "https://github.com/mralaminahamed/phpstan-storeengine-stubs",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Al Amin Ahamed",
+            "homepage": "https://github.com/mralaminahamed"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "php-stubs/wordpress-stubs": "^5.3 || ^6.0"
+    },
+    "require-dev": {
+        "php-stubs/generator": "^0.8.0",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^7.5 || ^8.5 || ^9.5",
+        "squizlabs/php_codesniffer": "^3.7"
+    },
+    "suggest": {
+        "szepeviktor/phpstan-wordpress": "WordPress extensions for PHPStan",
+        "symfony/polyfill-php73": "Symfony polyfill backporting some PHP 7.3+ features to lower PHP versions"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "autoload-dev": {
+        "psr-4": {
+            "StoreEngineStubs\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "php-stubs/generator": true
+        },
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "platform": {
+            "php": "7.4.0"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@composer --working-dir=source/ update --no-interaction"
+        ],
+        "post-update-cmd": [
+            "@composer --working-dir=source/ update --no-interaction"
+        ],
+        "analyze": "phpstan analyze",
+        "check": [
+            "@cs",
+            "@test",
+            "@analyze"
+        ],
+        "cleanup": [
+            "git clean -xdf --exclude='.idea' --exclude='.vscode'",
+            "git status --short --ignored | sed -n -e 's#^!! ##p' | xargs -r rm -vrf"
+        ],
+        "cs": "phpcs",
+        "cs-fix": "phpcbf",
+        "generate": "bash bin/generate.sh",
+        "release": "bash bin/release-latest-versions.sh",
+        "release-all": "bash bin/release-all-versions.sh",
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html coverage"
+    },
+    "scripts-descriptions": {
+        "analyze": "Run static analysis using PHPStan",
+        "check": "Run all checks (coding standards, tests, and static analysis)",
+        "cleanup": "Remove all ignored and generated files",
+        "cs": "Check coding standards",
+        "cs-fix": "Fix coding standards automatically",
+        "generate": "Generate StoreEngine stubs",
+        "release": "Generate and release new version of stubs",
+        "release-all": "Generate stubs for all available versions",
+        "test": "Run unit tests",
+        "test-coverage": "Run unit tests with code coverage report"
+    },
+    "support": {
+        "issues": "https://github.com/mralaminahamed/phpstan-storeengine-stubs/issues",
+        "source": "https://github.com/mralaminahamed/phpstan-storeengine-stubs"
+    }
+}
