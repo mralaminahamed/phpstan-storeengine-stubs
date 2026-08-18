@@ -74,7 +74,13 @@ log_step "Preparing versions file: $OUTPUT_FILE"
 
 # Extract and filter versions, excluding "trunk"
 log_step "Extracting versions..."
-VERSIONS=$(jq -r '."versions" | keys[]' <<<"$WC_JSON" | grep -v "trunk" | sort -V)
+# Stable releases only. "trunk" is not a release, a key that does not start
+# with a digit is malformed, and none of these packages has ever tagged a
+# pre-release.
+VERSIONS=$(jq -r '."versions" | keys[]' <<<"$WC_JSON" \
+    | grep -E '^[0-9]' \
+    | grep -viE '(alpha|beta|-rc|_rc|\.rc|dev)' \
+    | sort -V)
 check_result "Failed to extract versions from WordPress.org response"
 
 # Collect all versions in the output file
