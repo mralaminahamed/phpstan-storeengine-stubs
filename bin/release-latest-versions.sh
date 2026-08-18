@@ -136,13 +136,14 @@ while IFS= read -r VERSION; do
         continue
     fi
 
-    # Check if there are any changes to commit
-    if git diff-index --quiet HEAD --; then
+    # Stage first, then inspect the index: a stub file that does not exist yet
+    # is untracked, and an unstaged check would not notice it.
+    git add -A
+    if git diff --cached --quiet; then
         echo "  - No changes to commit for version ${VERSION}, skipping tag."
     else
         # Commit and tag the new version
         echo "  - Committing and tagging version ${VERSION}..."
-        git add .
         git commit -m "Generate stubs for StoreEngine ${VERSION}"
         git tag "v${VERSION}"
     fi
