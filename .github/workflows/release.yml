@@ -29,6 +29,10 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
+          # The runner default is 7.4, but --ignore-platform-reqs lets Composer
+          # resolve PHPUnit 11 / Symfony 7, which are PHP 8.2+ code. The
+          # generator then dies parsing its own vendor tree.
+          php-version: '8.3'
           extensions: json zip xdebug
           coverage: none
           tools: composer
