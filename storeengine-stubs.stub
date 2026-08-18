@@ -566,9 +566,6 @@ namespace StoreEngine\Addons\Affiliate\Ajax {
         public function get_affiliates_current_balance($payload)
         {
         }
-        protected function update_commission_report($payout_id)
-        {
-        }
     }
     class ReferralAjax extends \StoreEngine\Classes\AbstractAjaxHandler
     {
@@ -680,12 +677,45 @@ namespace StoreEngine\Addons\Affiliate {
         public static function get_affiliate_setting($setting_name)
         {
         }
-        public static function get_commission_amount(float $total_amount = 0)
+        /**
+         * The public URL query parameter that carries the referral code, e.g.
+         * `?ref=CODE`. Kept short and generic; filterable so a store can rename it.
+         * This is intentionally separate from the internal cookie name
+         * (STOREENGINE_AFFILIATE_COOKIE_KEY) so the URL stays clean while the stored
+         * cookie remains namespaced.
+         */
+        public static function get_referral_param(): string
+        {
+        }
+        /**
+         * Resolve the commission for an order amount.
+         *
+         * When `$affiliate_id` is given, that affiliate's own commission_type /
+         * commission_rate (stored on the affiliates row) takes precedence over the
+         * global default — previously these per-affiliate columns were saved but
+         * never applied.
+         *
+         * @param float    $total_amount Base amount to commission on.
+         * @param int|null $affiliate_id Optional affiliate for a per-affiliate rate.
+         */
+        public static function get_commission_amount(float $total_amount = 0, ?int $affiliate_id = null)
         {
         }
         public static function format_payment_method($payment_method = null): string
         {
         }
+        /**
+         * Resolve a referral code to its referral row.
+         *
+         * The code is valid on *any* landing page — a referral link can point at a
+         * product, a blog post, the home page, or the shop. Previously a click was
+         * only credited when the landing page matched the stored referral_post_id,
+         * so links to anything but the shop page silently failed to track.
+         *
+         * @param string|null $referral_code Referral code from the URL.
+         *
+         * @return array|false Referral row (with affiliate status) or false.
+         */
         public static function is_valid_referrer($referral_code = null)
         {
         }
@@ -701,7 +731,26 @@ namespace StoreEngine\Addons\Affiliate {
         public static function init()
         {
         }
+        /**
+         * Read-only affiliate profile panel on the WP user-edit screen so admins can
+         * see the details captured at signup (stored as user meta).
+         *
+         * @param \WP_User $user User being edited.
+         */
+        public function render_admin_affiliate_profile($user)
+        {
+        }
         public function auto_approve_commission(\StoreEngine\Classes\Order $order, string $status)
+        {
+        }
+        /**
+         * Reverse a commission when its order is refunded / cancelled / failed.
+         *
+         * An approved commission is clawed back from the affiliate's totals and
+         * available balance. A commission already paid out is flagged rejected but
+         * the withdrawn funds are left untouched (they cannot be reclaimed here).
+         */
+        protected function reverse_commission_for_order(\StoreEngine\Classes\Order $order)
         {
         }
         public function dashboard_menu_items(array $items): array
@@ -739,12 +788,50 @@ namespace StoreEngine\Addons\Affiliate\Models {
         public static function get_current_balance(int $affiliate_id)
         {
         }
+        /**
+         * Atomically hold `$amount` from the affiliate's available balance.
+         *
+         * The guard (`current_balance >= amount`) and the decrement happen in a
+         * single UPDATE so two concurrent withdrawal requests cannot both pass a
+         * read-then-write check and overdraw. Returns true only when exactly one
+         * row was reserved (sufficient funds); false means insufficient balance.
+         */
+        public static function reserve_balance(int $affiliate_id, float $amount): bool
+        {
+        }
+        /**
+         * Return a previously-reserved `$amount` to the affiliate's available
+         * balance (e.g. a payout was rejected or cancelled).
+         */
+        public static function release_balance(int $affiliate_id, float $amount): bool
+        {
+        }
+        /**
+         * Claw back a reversed commission from lifetime totals and available
+         * balance. Balance is floored at zero so a reversal that lands after the
+         * funds were already withdrawn cannot push the balance negative.
+         */
+        public static function reverse_commission(int $affiliate_id, float $amount): bool
+        {
+        }
     }
 }
 namespace StoreEngine\Addons\Affiliate\models {
     class Affiliate
     {
         public static function get_affiliates($args = [])
+        {
+        }
+        /**
+         * Attach the affiliate's signup profile (stored as user meta) to a result
+         * row so the admin UI / API can show who submitted the request and what
+         * they entered — website, promotional methods, payout email, terms date.
+         *
+         * @param array $row A single affiliate row (must contain user_id).
+         *
+         * @return array
+         */
+        protected static function attach_profile_meta(array $row): array
         {
         }
         public static function update(int $id, array $args)
@@ -754,6 +841,23 @@ namespace StoreEngine\Addons\Affiliate\models {
         {
         }
         public static function save($args = [])
+        {
+        }
+        /**
+         * Ensure the given user has an affiliate record, creating one if missing.
+         *
+         * Needed because a user can hold the `storeengine_affiliate` role without a
+         * matching affiliates row (e.g. admins auto-granted the role by
+         * Role::add_affiliate_role). `save()` refuses to create a record for anyone
+         * who already has the role, so this inserts directly (bypassing that guard)
+         * and reuses any existing record.
+         *
+         * @param int    $user_id User to provision.
+         * @param string $status  Status for a newly-created record.
+         *
+         * @return array|\WP_Error The affiliate row, or WP_Error on failure.
+         */
+        public static function ensure_affiliate_for_user(int $user_id, string $status = 'pending')
         {
         }
         public static function create_new_user($args = [])
@@ -832,6 +936,29 @@ namespace StoreEngine\Addons\Affiliate\Models {
         public static function update(int $id, array $args)
         {
         }
+        /**
+         * Whether a referral code is free to use — either unused, or already owned
+         * by the given affiliate (so re-saving an unchanged slug is allowed).
+         */
+        public static function is_code_available(string $code, int $for_affiliate_id = 0): bool
+        {
+        }
+        /**
+         * Set a custom (vanity) referral code on an affiliate's primary referral
+         * row. Validates length + uniqueness. Returns the normalised code on
+         * success or a WP_Error.
+         *
+         * Note: does not reuse self::update() because that method formats every
+         * value as %d, which would coerce a string code to 0.
+         *
+         * @param int    $affiliate_id Affiliate to update.
+         * @param string $code         Desired slug.
+         *
+         * @return string|\WP_Error
+         */
+        public static function update_code(int $affiliate_id, string $code)
+        {
+        }
     }
 }
 namespace StoreEngine\Addons\Affiliate {
@@ -859,10 +986,24 @@ namespace StoreEngine\Addons\Affiliate\Post {
         public function __construct()
         {
         }
-        public function apply_for_affiliation()
+        public function apply_for_affiliation($payload = [])
         {
         }
         public function register_for_affiliate($payload)
+        {
+        }
+        /**
+         * Persist the affiliate profile fields collected at signup to user meta.
+         *
+         * Stored as user meta (not a schema change) alongside the existing payout
+         * details. The payout email also seeds the withdrawal PayPal email when the
+         * affiliate hasn't set one yet, so approved affiliates can be paid without a
+         * second data-entry step.
+         *
+         * @param int   $user_id Target user.
+         * @param array $payload Sanitized form payload.
+         */
+        protected function save_affiliate_profile_meta(int $user_id, array $payload)
         {
         }
     }
@@ -1888,6 +2029,7 @@ namespace StoreEngine\Addons\Email\affiliate {
     {
         use \StoreEngine\Addons\Email\Traits\Email {
             \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+            \StoreEngine\Addons\Email\Traits\Email::get_settings as protected;
         }
         public function __construct()
         {
@@ -6317,6 +6459,24 @@ namespace StoreEngine\Addons\MultiVendor\Api {
         public function update_status(\WP_REST_Request $request)
         {
         }
+        /**
+         * Admin-initiated payout of a custom amount to a vendor.
+         *
+         * Records a `paid` withdrawal directly (no vendor request needed), capped at
+         * the vendor's available balance. Because Balance::for_vendor() treats paid
+         * rows as held, the amount is debited immediately and the remaining balance
+         * stays available for a later payout — so a large balance can be settled in
+         * instalments.
+         */
+        public function admin_pay(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * A specific vendor's available balance (admin view) for the payout UI.
+         */
+        public function get_vendor_balance(\WP_REST_Request $request)
+        {
+        }
         public function get_payment_method()
         {
         }
@@ -6345,6 +6505,13 @@ namespace StoreEngine\Addons\MultiVendor\Classes {
     class Balance
     {
         public static function for_vendor(int $user_id): float
+        {
+        }
+        /**
+         * Sum of amounts currently held against the vendor — pending + approved +
+         * paid withdrawals. Used to detect an overdraw (held > earned).
+         */
+        public static function held_total(int $user_id): float
         {
         }
         public static function lifetime_earned(int $user_id): float
@@ -25298,6 +25465,19 @@ namespace StoreEngine\Classes {
          * @return self
          */
         public static function init(): \StoreEngine\Classes\Cart
+        {
+        }
+        /**
+         * Return the current session cart instance without triggering initialization.
+         *
+         * Unlike init(), this never builds a cart; it returns whatever singleton
+         * already exists (or null). Useful while the cart is mid-initialization —
+         * e.g. inside coupon validation fired from calculate_cart_totals() — when
+         * StoreEngine->get_cart() has not yet received the return value of init().
+         *
+         * @return ?Cart
+         */
+        public static function get_instance(): ?\StoreEngine\Classes\Cart
         {
         }
         public static function load_by_hash(string $hash, \StoreEngine\Classes\Customer $customer): \StoreEngine\Classes\Cart
