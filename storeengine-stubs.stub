@@ -39,6 +39,26 @@ namespace StoreEngine\Interfaces {
          * @return void
          */
         public function addon_deactivation_hook();
+        /**
+         * Current schema version of the addon's own tables.
+         *
+         * Return a version string (e.g. a STOREENGINE_<ADDON>_DB_VERSION constant).
+         * Bump it whenever the addon's schema files change so the central manager
+         * (Addons::sync_addon_schemas) reruns install_tables(). Return an empty
+         * string when the addon has no tables of its own.
+         *
+         * @return string
+         */
+        public function get_db_version(): string;
+        /**
+         * (Re)create the addon's tables via dbDelta.
+         *
+         * Called by the central schema manager when get_db_version() differs from
+         * the stored value. Must be idempotent.
+         *
+         * @return void
+         */
+        public function install_tables(): void;
     }
 }
 namespace StoreEngine\Classes {
@@ -66,6 +86,19 @@ namespace StoreEngine\Classes {
         {
         }
         public function addon_deactivation_hook()
+        {
+        }
+        /**
+         * Addons with their own tables override this to return a version string.
+         * Empty string means "no tables" — the central manager skips this addon.
+         */
+        public function get_db_version(): string
+        {
+        }
+        /**
+         * Addons with their own tables override this to run their dbDelta calls.
+         */
+        public function install_tables(): void
         {
         }
         /**
@@ -121,6 +154,12 @@ namespace StoreEngine\Addons\Affiliate {
         {
         }
         public function dispatch_hooks()
+        {
+        }
+        public function get_db_version(): string
+        {
+        }
+        public function install_tables(): void
         {
         }
         public function addon_activation_hook()
@@ -905,12 +944,48 @@ namespace StoreEngine\Addons\Affiliate\Shortcode {
         }
     }
 }
-namespace StoreEngine\Addons\CatalogMode {
-    final class CatalogMode extends \StoreEngine\Classes\AbstractAddon
+namespace StoreEngine\Addons\Ai {
+    class Abilities
     {
         use \StoreEngine\Traits\Singleton;
-        protected string $addon_name = 'catalog-mode';
-        protected static ?array $settings = null;
+        const CATEGORY = 'storeengine';
+        protected function __construct()
+        {
+        }
+        /**
+         * Capability gate shared by every read ability.
+         */
+        public static function can_read(): bool
+        {
+        }
+        public function register(): void
+        {
+        }
+        /**
+         * Thin wrapper that fills in the shared category + read permission and maps
+         * `callback` to whichever execute key the installed Abilities API expects.
+         */
+        public function register_ability(string $id, array $args): void
+        {
+        }
+        /* ----------------------------------------------------------- callbacks */
+        public static function ability_get_product(array $input)
+        {
+        }
+        public static function ability_search_products(array $input): array
+        {
+        }
+        public static function ability_get_order(array $input)
+        {
+        }
+        public static function ability_get_inventory(array $input)
+        {
+        }
+    }
+    final class Ai extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'ai';
         public function define_constants()
         {
         }
@@ -921,6 +996,57 @@ namespace StoreEngine\Addons\CatalogMode {
         {
         }
     }
+}
+namespace StoreEngine\Addons\Ai\Classes {
+    class ProductGenerator
+    {
+        /**
+         * Generate a single field for a product.
+         *
+         * @param int    $product_id
+         * @param string $field      title | description | short_description | image_alt
+         * @param array  $opts       { tone?:string, language?:string }
+         *
+         * @return string|\WP_Error
+         */
+        public static function generate(int $product_id, string $field, array $opts = [])
+        {
+        }
+        /**
+         * Build the product context block the model reasons over.
+         *
+         * @param int   $product_id
+         * @param mixed $product    StoreEngine product object.
+         */
+        protected static function build_context(int $product_id, $product): string
+        {
+        }
+    }
+    class PromptLibrary
+    {
+        /**
+         * Supported product fields.
+         */
+        public static function fields(): array
+        {
+        }
+        /**
+         * Human phrase describing a tone, woven into the instruction.
+         */
+        protected static function tone_phrase(string $tone): string
+        {
+        }
+        /**
+         * Instruction + soft length cap for a field.
+         *
+         * @return array{system:string, max_chars:int}
+         */
+        public static function for_field(string $field, string $tone = 'professional', string $language = ''): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Ai {
     class Hooks
     {
         use \StoreEngine\Traits\Singleton;
@@ -928,40 +1054,78 @@ namespace StoreEngine\Addons\CatalogMode {
         {
         }
         /**
-         * Dispatch catalog mode if enabled.
-         * Using anonymous function so actions can't be removed.
-         *
-         * @return void
+         * Only nudge on StoreEngine admin screens, and only while unavailable.
          */
-        public function dispatch_catalog_mode()
+        public function maybe_render_unavailable_notice(): void
         {
         }
-        public function product_loop_add_to_cart_replacement()
+    }
+}
+namespace StoreEngine\Addons\Ai\Rest {
+    final class RestProduct
+    {
+        const NS = 'storeengine/v1';
+        public static function init(): void
         {
         }
-        public function single_product_add_to_cart_replacement()
+        public static function permission(): bool
         {
         }
-        protected function get_replacement_args(): array
+        public static function register_routes(): void
         {
         }
-        public static function maybe_exclude_user(): bool
+        public static function generate(\WP_REST_Request $request)
         {
         }
-        public static function should_replace_add_to_cart(): bool
+    }
+    class RestSettings
+    {
+        const NS = 'storeengine/v1';
+        public static function init(): void
         {
         }
-        public static function maybe_hide_add_to_cart(): bool
+        public static function permission(): bool
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        /** Keys this tab manages, with their value type for sanitisation. */
+        protected static function field_types(): array
+        {
+        }
+        protected static function current(): array
+        {
+        }
+        public static function get_settings(): \WP_REST_Response
+        {
+        }
+        public static function save_settings(\WP_REST_Request $request): \WP_REST_Response
         {
         }
         /**
-         * Reject REST hits to the storefront cart + checkout routes when
-         * `disable_cart_checkout` is on. Replaces the legacy admin-ajax block.
+         * @param string $type  bool | int | float | text | list | enum:a,b,c
+         * @param mixed  $value
+         *
+         * @return mixed
          */
-        public function block_cart_rest_routes($result, $server, $request)
+        protected static function sanitize_field(string $type, $value)
         {
         }
-        public function add_script_data(array $data): array
+    }
+    final class RestStatus
+    {
+        const NS = 'storeengine/v1';
+        public static function init(): void
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        public static function get_status(): \WP_REST_Response
         {
         }
     }
@@ -1048,7 +1212,187 @@ namespace StoreEngine\Classes {
         }
     }
 }
+namespace StoreEngine\Addons\Ai {
+    class Settings extends \StoreEngine\Classes\AbstractAddonSettings
+    {
+        protected ?string $settings_name = 'ai';
+        public function get_default_settings(): array
+        {
+        }
+        public function get_settings_fields(): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Brand {
+    final class Brand extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'brand';
+        /**
+         * Flat product-brand taxonomy slug. Kept local to the addon so the brand
+         * concept stays fully self-contained (no edit to the core Helper).
+         */
+        const TAXONOMY = 'storeengine_product_brand';
+        /**
+         * Term-meta keys for the brand images (both store WP attachment IDs).
+         */
+        const META_IMAGE = 'storeengine_brand_image';
+        const META_BANNER = 'storeengine_brand_banner';
+        public function define_constants()
+        {
+        }
+        /**
+         * Registered only while the addon is active (AbstractAddon::run() gates this).
+         *
+         * The taxonomy must be registered on `init` (priority 5, matching core
+         * Database) — NOT inline here, because Addons::init() runs at plugins_loaded,
+         * before `init` and before $wp_rewrite is ready.
+         */
+        public function init_addon()
+        {
+        }
+        /**
+         * Flush rewrite rules once when the merchant enables the addon so the
+         * /product-brand/<slug>/ archive permalink works immediately.
+         */
+        public function addon_activation_hook()
+        {
+        }
+        public function addon_deactivation_hook()
+        {
+        }
+        /**
+         * Register the flat product-brand taxonomy. Mirrors the core Category/Tag
+         * registration (see includes/database.php) but non-hierarchical.
+         */
+        public function register_taxonomy()
+        {
+        }
+        /**
+         * Register the brand logo + banner term meta. Both are attachment IDs and
+         * are surfaced inside the WP_REST_Terms_Controller `meta` object, so the
+         * React form can read/write them with no custom REST controller.
+         */
+        public function register_term_metas()
+        {
+        }
+        /**
+         * Append a "Brands" sub-item to the existing Products menu. Because this
+         * filter is only added while the addon is active, the menu entry (and its
+         * SPA route) disappears when the addon is disabled.
+         *
+         * @param array $menu Admin menu list (see Admin\Menu::get_menu_lists()).
+         * @return array
+         */
+        public function inject_menu_item(array $menu): array
+        {
+        }
+    }
+    final class Frontend
+    {
+        use \StoreEngine\Traits\Singleton;
+        public static function init()
+        {
+        }
+        /**
+         * Output the brand(s) assigned to the current product on the single-product
+         * page. Mirrors templates/single-product/categories.php.
+         */
+        public function render_single_product_brands()
+        {
+        }
+        /**
+         * Register the "brand" archive filter widget so it shows in the shop
+         * sidebar alongside the Category / Tags filters.
+         *
+         * @param array $config Widget config keyed by widget slug.
+         * @return array
+         */
+        public function register_archive_filter_widget($config)
+        {
+        }
+        /**
+         * Render the brand filter widget markup. Flat list of brands (no hierarchy).
+         * The checkboxes use name="brand" — handled client-side by ssr.js, which
+         * pushes selected slugs into the archive AJAX payload.
+         */
+        public function render_archive_filter_widget()
+        {
+        }
+        /**
+         * Narrow the archive query by the selected brand slugs. The brand selection
+         * arrives in the `storeengine/archive_product_filter` AJAX GET payload, so we
+         * read it from $_REQUEST and append a tax_query clause.
+         *
+         * @param array $args WP_Query args built by Helper::prepare_product_search_query_args().
+         * @return array
+         */
+        public function apply_brand_filter_args($args)
+        {
+        }
+    }
+}
 namespace StoreEngine\Addons\CatalogMode {
+    final class CatalogMode extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'catalog-mode';
+        protected static ?array $settings = null;
+        public function define_constants()
+        {
+        }
+        public function init_addon()
+        {
+        }
+        public function addon_activation_hook()
+        {
+        }
+    }
+    class Hooks
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected function __construct()
+        {
+        }
+        /**
+         * Dispatch catalog mode if enabled.
+         * Using anonymous function so actions can't be removed.
+         *
+         * @return void
+         */
+        public function dispatch_catalog_mode()
+        {
+        }
+        public function product_loop_add_to_cart_replacement()
+        {
+        }
+        public function single_product_add_to_cart_replacement()
+        {
+        }
+        protected function get_replacement_args(): array
+        {
+        }
+        public static function maybe_exclude_user(): bool
+        {
+        }
+        public static function should_replace_add_to_cart(): bool
+        {
+        }
+        public static function maybe_hide_add_to_cart(): bool
+        {
+        }
+        /**
+         * Reject REST hits to the storefront cart + checkout routes when
+         * `disable_cart_checkout` is on. Replaces the legacy admin-ajax block.
+         */
+        public function block_cart_rest_routes($result, $server, $request)
+        {
+        }
+        public function add_script_data(array $data): array
+        {
+        }
+    }
     class Settings extends \StoreEngine\Classes\AbstractAddonSettings
     {
         protected ?string $settings_name = 'catalog_mode';
@@ -1709,6 +2053,32 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
     }
+    class ItemShipped
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'order_item_shipped';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        /**
+         * @param int   $order_id
+         * @param int   $order_item_id
+         * @param int   $product_id
+         * @param array $shipment   courier/tracking_number/tracking_url/…
+         * @param string $new_status
+         */
+        public function on_item_shipped($order_id, $order_item_id, $product_id, $shipment, $new_status): void
+        {
+        }
+    }
     class NewUserNotification
     {
         use \StoreEngine\Addons\Email\Traits\Email {
@@ -1835,6 +2205,25 @@ namespace StoreEngine\Addons\Email\subscription {
         {
         }
         public function on_status_updated($subscription, $new_status, $old_status): void
+        {
+        }
+    }
+    class RenewalFailed
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'subscription_renewal_failed';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function on_renewal_failed($subscription, $renewal_order): void
         {
         }
     }
@@ -2215,6 +2604,12 @@ namespace StoreEngine\Addons\EmbeddableCheckout {
         public function render_missing_dependency_notice(): void
         {
         }
+        public function get_db_version(): string
+        {
+        }
+        public function install_tables(): void
+        {
+        }
         public function addon_activation_hook()
         {
         }
@@ -2351,6 +2746,844 @@ namespace StoreEngine\Addons\EmbeddableCheckout {
         {
         }
         public function get_settings_fields(): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\EuCompliance {
+    final class EuCompliance extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'eu-compliance';
+        const DB_VERSION_OPTION = 'storeengine_compliance_db_version';
+        const DB_VERSION = '1.0.0';
+        public function define_constants()
+        {
+        }
+        /**
+         * Registered only while the addon is active (AbstractAddon::run() gates this).
+         */
+        public function init_addon()
+        {
+        }
+        /**
+         * Build the consent log table when the store activates the addon.
+         */
+        public function addon_activation_hook()
+        {
+        }
+        public function get_db_version(): string
+        {
+        }
+        public function install_tables(): void
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Settings
+         * ------------------------------------------------------------------- */
+        public function register_setting_defaults(array $settings): array
+        {
+        }
+        /**
+         * Seed compliance keys into the settings object returned to the admin React app,
+         * so the Compliance tab's fields render even before the store's first save (the
+         * global settings object only contains previously-saved keys).
+         *
+         * @param object $settings Settings object (clone of the global).
+         * @return object
+         */
+        public function ensure_settings_defaults($settings)
+        {
+        }
+        /**
+         * Coerce stored checkbox definitions to proper types (bool/int), tolerating
+         * stdClass items and the string booleans produced by the settings passthrough.
+         *
+         * @param mixed $defs Raw stored definitions.
+         * @return array<int, array<string, mixed>>
+         */
+        private function normalize_checkbox_defs($defs): array
+        {
+        }
+        /**
+         * Coerce stored legal-docs config to proper types.
+         *
+         * @param mixed $docs Raw stored config.
+         * @return array<string, mixed>
+         */
+        private function normalize_legal_docs($docs): array
+        {
+        }
+        public function register_setting_fields(array $fields): array
+        {
+        }
+        /**
+         * Default checkbox builder definitions. All disabled by default so enabling
+         * the German wording is an explicit store decision (no behaviour change OOTB).
+         *
+         * @return array<int, array<string, mixed>>
+         */
+        private function default_checkboxes(): array
+        {
+        }
+        /**
+         * Enabled, normalised, order-sorted checkbox definitions.
+         *
+         * @return array<int, array<string, mixed>>
+         */
+        public function get_enabled_checkboxes(): array
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Feature 1 — button text
+         * ------------------------------------------------------------------- */
+        public function filter_button_text($label)
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Feature 3 — consent checkboxes
+         * ------------------------------------------------------------------- */
+        public function render_consent_checkboxes()
+        {
+        }
+        /**
+         * JSON-friendly enabled checkbox list for the React Instant Checkout snapshot.
+         *
+         * @param mixed $checkboxes Incoming filter value (unused).
+         * @return array<int, array<string, mixed>>
+         */
+        public function snapshot_consent_checkboxes($checkboxes)
+        {
+        }
+        /**
+         * Server-side gate: reject the order if any mandatory consent is missing.
+         *
+         * @param mixed $result Previous validation result (WP_Error or null).
+         * @param array $data   Checkout payload.
+         * @return mixed WP_Error when a required consent is missing, otherwise $result.
+         */
+        public function validate_consent($result, array $data)
+        {
+        }
+        /**
+         * Persist a consent log row per enabled checkbox (GDPR burden-of-proof) and
+         * mirror a compact summary onto the order. Syncs newsletter opt-ins to GemCRM.
+         *
+         * @param \StoreEngine\Classes\Order $order   Placed order.
+         * @param array                      $payload Checkout payload.
+         */
+        public function log_consent($order, array $payload)
+        {
+        }
+        /**
+         * Read submitted consent values from the payload, falling back to the request.
+         * Nonce is verified upstream by the checkout flow before validate()/place_order().
+         *
+         * @param array $data Checkout payload.
+         * @return array<string, bool>
+         */
+        private function read_submitted_consent(array $data): array
+        {
+        }
+        private function sync_newsletter_to_gemcrm($order)
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Feature 4 — AGB / Widerrufsbelehrung PDF attachments
+         * ------------------------------------------------------------------- */
+        public function attach_legal_documents(array $mail_arguments, string $email_name, array $args): array
+        {
+        }
+        /**
+         * Render a WordPress page to a temporary PDF.
+         *
+         * PDF rendering — including the Unicode font set required for German text — is
+         * owned by the Invoice addon (fonts live in uploads/invoice/fonts). We reuse its
+         * generator so legal documents render identically to invoices. When the Invoice
+         * addon is inactive there is no font infrastructure, so we no-op gracefully.
+         *
+         * @param int $page_id Page ID.
+         * @return string|null Absolute file path, or null when unavailable.
+         */
+        private function render_page_to_pdf(int $page_id): ?string
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Feature 2 — VAT breakdown
+         * ------------------------------------------------------------------- */
+        /**
+         * Add net / per-rate VAT / gross to the checkout totals payload consumed by
+         * the React Instant Checkout. The PHP checkout renders the same data server-side.
+         *
+         * @param array                     $totals Existing totals payload.
+         * @param \StoreEngine\Classes\Cart $cart   Current cart.
+         * @return array
+         */
+        public function add_vat_breakdown(array $totals, $cart): array
+        {
+        }
+        /**
+         * Render an EU-compliant net / VAT breakdown on the PHP cart + checkout totals.
+         * The explicit "Net total" row is always added (never shown otherwise); per-rate
+         * VAT rows are added only when core hasn't already itemized them (i.e. when the
+         * tax display mode isn't "exclusive"), so nothing is duplicated.
+         */
+        public function render_vat_breakdown_rows()
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Consent log table
+         * ------------------------------------------------------------------- */
+        public static function table_name(): string
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * GDPR — consent log exporter / eraser (via the gdpr addon's filters)
+         * ------------------------------------------------------------------- */
+        /**
+         * Register the consent-log exporter on StoreEngine's privacy exporter list.
+         *
+         * @param array $exporters
+         * @return array
+         */
+        public function register_privacy_exporter(array $exporters): array
+        {
+        }
+        /**
+         * Register the consent-log eraser on StoreEngine's privacy eraser list.
+         *
+         * @param array $erasers
+         * @return array
+         */
+        public function register_privacy_eraser(array $erasers): array
+        {
+        }
+        /**
+         * Export consent log entries recorded for the given email.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public function export_consent_logs(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Anonymize the PII on consent log rows while retaining the consent record
+         * itself (kept as legal burden-of-proof of consent).
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public function erase_consent_logs(string $email, int $page = 1): array
+        {
+        }
+        public function maybe_create_table()
+        {
+        }
+        /**
+         * @param array<string, mixed> $row Consent log row.
+         */
+        private function insert_consent_log(array $row)
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Feature 5 — Grundpreis (PAngV base price per unit)
+         * ------------------------------------------------------------------- */
+        /**
+         * Register the Grundpreis product meta for REST. Lives in the addon (not
+         * core) so the fields only exist while the addon is active — mirroring core
+         * register_product_meta(), which also runs on rest_api_init.
+         */
+        public function register_grundpreis_meta(): void
+        {
+        }
+        /**
+         * Unit conversion factors to a canonical unit per measurement family.
+         * content and base units must share a family for a Grundpreis to apply.
+         *
+         * @return array<string, array{family:string, factor:float, label:string}>
+         */
+        private function grundpreis_units(): array
+        {
+        }
+        /**
+         * Append the Grundpreis line to a product price's formatted meta, so it
+         * renders next to the price on archive + single-product (PAngV).
+         *
+         * @param array                     $meta  Existing price meta (key => html).
+         * @param \StoreEngine\Classes\Price $price Price object.
+         * @return array
+         */
+        public function append_grundpreis_meta(array $meta, $price): array
+        {
+        }
+        /**
+         * Compute the Grundpreis string for a price, e.g. "6,00 € / 1 kg".
+         *
+         * @param \StoreEngine\Classes\Price $price Price object.
+         * @return string|null Null when not configured/applicable.
+         */
+        public function grundpreis_html($price): ?string
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\EuVat\Classes {
+    class AdminSettingsPage
+    {
+        const MENU_SLUG = 'storeengine-eu-vat';
+        const NONCE_ACTION = 'storeengine_eu_vat_save_settings';
+        const POST_ACTION = 'storeengine_eu_vat_save_settings';
+        public function __construct()
+        {
+        }
+        public function register_menu(): void
+        {
+        }
+        public function render_page(): void
+        {
+        }
+        public function handle_save(): void
+        {
+        }
+        public function maybe_show_saved_notice(): void
+        {
+        }
+        private function sanitize_required(string $value): string
+        {
+        }
+        private function all_countries(): array
+        {
+        }
+    }
+    class Ajax extends \StoreEngine\Classes\AbstractAjaxHandler
+    {
+        public function __construct()
+        {
+        }
+        /**
+         * Return the VAT number stored on an order, for the admin order editor.
+         */
+        public function get_order_vat(array $payload): void
+        {
+        }
+        /**
+         * Write a VAT number onto an order. Covers guest orders that had no VAT
+         * captured at checkout, so it can appear on the (regenerated) invoice.
+         */
+        public function save_order_vat(array $payload): void
+        {
+        }
+        public function validate(array $payload): void
+        {
+        }
+        public function save_settings(array $payload): void
+        {
+        }
+        private function sanitize_required(string $value): string
+        {
+        }
+        /**
+         * Decide whether to exempt VAT for a given VAT country, given store settings.
+         *
+         * Rules:
+         *   - Always exempt unless the VAT country matches the store base country
+         *     and "preserve_in_base_country" is "yes".
+         *   - Or the VAT country is in the explicit preserve list.
+         */
+        private function should_exempt(string $vat_country): bool
+        {
+        }
+        private function apply_to_session(?string $vat_full, bool $exempt): void
+        {
+        }
+        private function apply_to_draft_order(?string $vat_full, bool $exempt, ?array $result): void
+        {
+        }
+        private function log(string $event, array $context): void
+        {
+        }
+    }
+    class Assets
+    {
+        public function __construct()
+        {
+        }
+        public function enqueue(): void
+        {
+        }
+        /**
+         * Enqueue the admin order-editor VAT field. Scoped to StoreEngine admin
+         * screens by piggy-backing on the core admin bundle: if that isn't enqueued,
+         * we're not on a StoreEngine page and there's nothing to inject into.
+         */
+        public function enqueue_admin(): void
+        {
+        }
+        /**
+         * Inject our settings into StoreEngineGlobal so the JS doesn't need a
+         * separate localize call.
+         */
+        public function inject_js_data($data)
+        {
+        }
+    }
+    class Hooks
+    {
+        public function __construct()
+        {
+        }
+        // ──────────────────────────────────────────────────────────────────────
+        // Checkout
+        // ──────────────────────────────────────────────────────────────────────
+        public function render_checkout_field($customer): void
+        {
+        }
+        /**
+         * The AJAX schema for update_checkout strips unknown fields, so we read
+         * directly from $_POST here. Nonce verification is handled by the parent
+         * AbstractAjaxHandler before this filter ever fires.
+         *
+         * phpcs:disable WordPress.Security.NonceVerification.Missing
+         */
+        public function capture_vat_on_update($data)
+        {
+        }
+        public function guard_required_field($order): void
+        {
+        }
+        public function persist_order_meta($order, $payload): void
+        {
+        }
+        // ──────────────────────────────────────────────────────────────────────
+        // Tax
+        // ──────────────────────────────────────────────────────────────────────
+        /**
+         * Zero out tax rates when the active customer is flagged as VAT-exempt.
+         * Returning a non-null array short-circuits Tax::calc_tax() with that
+         * array — see includes/classes/tax.php:61.
+         *
+         * @param mixed $override
+         * @param float $price
+         * @param array $rates
+         * @param bool  $price_includes_tax
+         */
+        public function zero_rates_when_exempt($override, $price, $rates, $price_includes_tax)
+        {
+        }
+        // ──────────────────────────────────────────────────────────────────────
+        // Customer / My Account
+        // ──────────────────────────────────────────────────────────────────────
+        public function sync_user_meta($order, $payload): void
+        {
+        }
+        public function render_account_vat($addr_type = ''): void
+        {
+        }
+        /**
+         * Editable VAT input rendered inside the My Account edit-address form
+         * (billing only). Saved by save_account_vat_field().
+         *
+         * @param string $addr_type Address type being edited (billing|shipping).
+         */
+        public function render_account_vat_field($addr_type = ''): void
+        {
+        }
+        /**
+         * Persist the editable VAT field when the billing address form is saved.
+         *
+         * The core dashboard save handler only loops fields from get_address_fields()
+         * and its registrar schema strips unknown keys, so we read raw $_POST here —
+         * same approach as capture_vat_on_update() on checkout. Nonce + capability are
+         * re-checked because this fires on the public admin-post action.
+         *
+         * phpcs:disable WordPress.Security.NonceVerification.Missing
+         */
+        public function save_account_vat_field(): void
+        {
+        }
+        public function render_order_vat_line($order): void
+        {
+        }
+    }
+    class Settings
+    {
+        const OPTION_KEY = 'storeengine_eu_vat_settings';
+        public function __construct()
+        {
+        }
+        public static function get(string $key, $default = null)
+        {
+        }
+        public static function all(): array
+        {
+        }
+        public static function update(array $values): void
+        {
+        }
+        public static function save_default_settings_once(): void
+        {
+        }
+        public static function defaults(): array
+        {
+        }
+        /**
+         * Expose to the admin React UI via the storeengine/api/settings filter.
+         * Multi-currency uses the same hook to surface its own settings tab.
+         *
+         * The settings payload is a `\stdClass` (a clone of $storeengine_settings),
+         * not an array — so the value is attached as an object property, mirroring
+         * the multi-currency addon.
+         */
+        public function expose_to_admin($settings)
+        {
+        }
+    }
+    final class VatNumber
+    {
+        public string $country;
+        public string $number;
+        public string $raw;
+        private function __construct(string $country, string $number, string $raw)
+        {
+        }
+        /**
+         * Parse a raw input. The billing country is used as a fallback when the
+         * user omits the country prefix (e.g. enters "123456789" with billing DE
+         * instead of "DE123456789").
+         *
+         * Returns null when the input cannot be turned into a usable VAT pair.
+         */
+        public static function parse(string $input, string $billing_country = ''): ?self
+        {
+        }
+        public function full(): string
+        {
+        }
+    }
+    class ViesValidator
+    {
+        const VIES_WSDL = 'https://ec.europa.eu/taxation_customs/vies/services/checkVatService.wsdl';
+        const VIES_URL = 'https://ec.europa.eu/taxation_customs/vies/services/checkVatService';
+        const HMRC_URL = 'https://api.service.hmrc.gov.uk/organisations/vat/check-vat-number/lookup/';
+        public function validate(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): array
+        {
+        }
+        private function try_method(string $method, \StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        {
+        }
+        private function validate_soap(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        {
+        }
+        private function validate_curl(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        {
+        }
+        private function validate_fgc(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        {
+        }
+        private function validate_hmrc(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): array
+        {
+        }
+        private function soap_envelope(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): string
+        {
+        }
+        private function parse_vies_xml(string $xml, \StoreEngine\Addons\EuVat\Classes\VatNumber $vat, string $method): ?array
+        {
+        }
+        private function error_result(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat, string $error, string $method): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\EuVat {
+    final class EuVat extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'eu-vat';
+        public function define_constants(): void
+        {
+        }
+        public function init_addon(): void
+        {
+        }
+        public function addon_activation_hook(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Gdpr {
+    class Erasers
+    {
+        /**
+         * Anonymize orders placed by the email (registered + guest), in place.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function orders(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Anonymize the customer-lookup row; delete saved addresses + consent prefs.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function customer_data(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Anonymize the IP address on the customer's download log rows.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function downloads(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Delete the customer's saved payment tokens (and their meta).
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function payment_tokens(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Delete the customer's REST API keys.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function api_keys(string $email, int $page = 1): array
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Internal
+         * ------------------------------------------------------------------- */
+        /**
+         * Blank out every personal field on an order and persist it. Order rows are
+         * kept so totals/tax reporting stay intact.
+         *
+         * @param \StoreEngine\Classes\Order $order
+         */
+        private static function anonymize_order(\StoreEngine\Classes\Order $order)
+        {
+        }
+        /**
+         * Build the standard WP eraser return array.
+         */
+        private static function result(bool $removed, bool $retained, array $messages, bool $done): array
+        {
+        }
+        /**
+         * Deterministic placeholder email so anonymized rows stay unique.
+         *
+         * @param string $seed
+         * @return string
+         */
+        private static function anonymized_email_for(string $seed): string
+        {
+        }
+    }
+    class Exporters
+    {
+        /**
+         * Orders placed by the email (registered + guest), one export item each.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function orders(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Customer-lookup record, saved usermeta addresses and consent preferences.
+         * Only meaningful for a registered account; guests have none.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function customer_data(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Download log (which files were downloaded, when, from which IP).
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function downloads(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * Saved payment methods. The raw token/secret is never exported — only the
+         * gateway and type, so the customer can see what is stored without exposing
+         * reusable credentials.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function payment_tokens(string $email, int $page = 1): array
+        {
+        }
+        /**
+         * REST API keys. The consumer secret is never exported.
+         *
+         * @param string $email
+         * @param int    $page
+         * @return array
+         */
+        public static function api_keys(string $email, int $page = 1): array
+        {
+        }
+        /* ---------------------------------------------------------------------
+         * Internal
+         * ------------------------------------------------------------------- */
+        /**
+         * Flatten an order into export rows using its public getters.
+         *
+         * @param \StoreEngine\Classes\Order $order
+         * @return array
+         */
+        private static function order_rows(\StoreEngine\Classes\Order $order): array
+        {
+        }
+        /**
+         * Build a single `name => value` export row, or null when the value is empty.
+         *
+         * @param string $name
+         * @param mixed  $value
+         * @return array|null
+         */
+        private static function row(string $name, $value): ?array
+        {
+        }
+        /**
+         * Boolean preference row (always rendered, Yes/No).
+         *
+         * @param string $name
+         * @param mixed  $value
+         * @return array
+         */
+        private static function bool_row(string $name, $value): array
+        {
+        }
+        /**
+         * Join non-empty address parts with commas.
+         *
+         * @param array $parts
+         * @return string
+         */
+        private static function format_address(array $parts): string
+        {
+        }
+    }
+    final class Gdpr extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'gdpr';
+        public function define_constants()
+        {
+        }
+        /**
+         * Registered only while the addon is active (AbstractAddon::run() gates this).
+         */
+        public function init_addon()
+        {
+        }
+        /**
+         * Append StoreEngine's core exporters, then let active addons add theirs.
+         *
+         * @param array $exporters Registered exporters keyed by id.
+         * @return array
+         */
+        public function register_exporters(array $exporters): array
+        {
+        }
+        /**
+         * Append StoreEngine's core erasers, then let active addons add theirs.
+         *
+         * @param array $erasers Registered erasers keyed by id.
+         * @return array
+         */
+        public function register_erasers(array $erasers): array
+        {
+        }
+        /**
+         * Register suggested text for the site's Privacy Policy page.
+         */
+        public function add_privacy_policy_content()
+        {
+        }
+    }
+    class Helper
+    {
+        /**
+         * Rows handled per export/erase batch. WordPress re-invokes the callback
+         * with an incremented $page until it returns `done => true`.
+         */
+        const PER_PAGE = 20;
+        /**
+         * Resolve a WP user id from an email address.
+         *
+         * @param string $email
+         * @return int 0 when no account matches (i.e. a guest).
+         */
+        public static function user_id_for_email(string $email): int
+        {
+        }
+        /**
+         * Order ids belonging to an email — matched by billing_email OR, when the
+         * email maps to an account, by customer_id. Covers guests and registered
+         * customers alike. Paginated, newest first.
+         *
+         * @param string $email
+         * @param int    $page     1-based.
+         * @param int    $per_page
+         * @return int[]
+         */
+        public static function order_ids_for_email(string $email, int $page = 1, int $per_page = self::PER_PAGE): array
+        {
+        }
+        /**
+         * Hydrate an order id into the correct order object (orders, subscriptions, …).
+         *
+         * @param int $order_id
+         * @return \StoreEngine\Classes\Order|null
+         */
+        public static function get_order(int $order_id): ?\StoreEngine\Classes\Order
+        {
+        }
+        /**
+         * Placeholder email used when anonymizing an order's email fields.
+         *
+         * @param int $order_id
+         * @return string
+         */
+        public static function anonymized_email(int $order_id): string
+        {
+        }
+        /**
+         * Whether a batch is the last one (fewer rows than the page size).
+         *
+         * @param int $count    Rows returned this batch.
+         * @param int $per_page
+         * @return bool
+         */
+        public static function is_done(int $count, int $per_page = self::PER_PAGE): bool
         {
         }
     }
@@ -2688,6 +3921,18 @@ namespace StoreEngine\Addons\Inventory\Api {
         public static function query(\WP_REST_Request $request)
         {
         }
+        /**
+         * Attach an is_low_stock flag to each row so the frontend has a single
+         * source of truth. Mirrors Variation::is_low_stock() using only the row's
+         * own threshold: low = qty > 0 AND threshold set AND qty <= threshold.
+         *
+         * @param array $rows Result rows (objects).
+         *
+         * @return array
+         */
+        private static function decorate_low_stock(array $rows): array
+        {
+        }
     }
 }
 namespace StoreEngine\Addons\Inventory\Classes {
@@ -2810,6 +4055,36 @@ namespace StoreEngine\Addons\Invoice {
         public static function generate_pdf(\StoreEngine\Classes\Order $order): ?string
         {
         }
+        /**
+         * Per-tax-rate breakdown for §14 UStG (Entgelt je Steuersatz).
+         *
+         * Net per rate is derived from the rate's tax amount and percentage
+         * (net = tax / (percent/100)), which is exact for standard VAT and avoids
+         * having to re-attribute per-item nets. Zero-rated buckets are hidden by
+         * core (storeengine/order_hide_zero_taxes), so this lists charged rates only;
+         * the net/tax/gross summary is taken straight from the order totals.
+         *
+         * @return array{rates: array<int, array{label:string, percent:float, net:float, tax:float}>, net:float, tax:float, gross:float}
+         */
+        public static function get_tax_breakdown(\StoreEngine\Classes\Order $order): array
+        {
+        }
+        /**
+         * Reverse-charge state for an order (intra-EU B2B), derived from the eu-vat
+         * addon's order meta. No hard dependency — reads meta only, with a fallback to
+         * the customer's profile VAT number which is then attached to the order.
+         *
+         * @return array{is_reverse_charge:bool, vat_number:string}
+         */
+        public static function get_reverse_charge(\StoreEngine\Classes\Order $order): array
+        {
+        }
+        /**
+         * Format a money amount in the order's currency.
+         */
+        public static function price($amount, \StoreEngine\Classes\Order $order): string
+        {
+        }
     }
 }
 namespace StoreEngine\Addons\Invoice\Hooks {
@@ -2863,6 +4138,46 @@ namespace StoreEngine\Addons\Invoice\Hooks {
     }
 }
 namespace StoreEngine\Addons\Invoice {
+    class InvoiceNumber
+    {
+        const META_KEY = '_storeengine_invoice_number';
+        const META_SEQ = '_storeengine_invoice_number_seq';
+        const OPT_NEXT = 'storeengine_invoice_next_number';
+        const OPT_YEAR = 'storeengine_invoice_number_year';
+        const LOCK_NAME = 'storeengine_invoice_number';
+        /**
+         * Register hooks. Called from the addon's init_addon().
+         */
+        public static function init(): void
+        {
+        }
+        /**
+         * @param int $order_id Order being paid.
+         */
+        public static function on_payment_complete($order_id): void
+        {
+        }
+        /**
+         * Return the stored invoice number, falling back to the order ID for legacy
+         * orders that were paid before this feature existed.
+         */
+        public static function get(\StoreEngine\Classes\Order $order): string
+        {
+        }
+        /**
+         * Assign a number once, immutably. No-op if one already exists.
+         */
+        public static function assign(\StoreEngine\Classes\Order $order): void
+        {
+        }
+        /**
+         * Apply the configured format: prefix + optional year + zero-padded sequence.
+         * e.g. "RE-2026-0001" (yearly) or "RE-0001".
+         */
+        public static function format(int $seq, int $year): string
+        {
+        }
+    }
     final class Invoice extends \StoreEngine\Classes\AbstractAddon
     {
         use \StoreEngine\Traits\Singleton;
@@ -4035,6 +5350,42 @@ namespace StoreEngine\Addons\MultiVendor {
     }
 }
 namespace StoreEngine\Addons\MultiVendor\Api {
+    /**
+     * Vendor-scoped order fulfilment.
+     *
+     * Lets an approved vendor move THEIR OWN order line items through the shipping
+     * lifecycle and attach courier + tracking, without ever touching the shared
+     * order status (an order can contain items from several vendors). The security
+     * boundary is the per-row ownership check: the vendor is always resolved from
+     * the lookup row's `vendor_id`, never from the request.
+     *
+     * Reuses the core per-item `shipping_status` machinery
+     * (`order_product_lookup.shipping_status`) and fires the same core hooks the
+     * admin shipping AJAX fires, so existing listeners keep working.
+     */
+    class Fulfillment
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        protected static function lookup_table(): string
+        {
+        }
+        public function register_routes()
+        {
+        }
+        /**
+         * Gate: an approved vendor. Per-item ownership is enforced separately in the
+         * callback (resolved from the DB row, never the request).
+         */
+        public function vendor_only(): bool
+        {
+        }
+        public function update_shipment(\WP_REST_Request $request)
+        {
+        }
+    }
     class ProductPermissions
     {
         public static function init()
@@ -4151,6 +5502,19 @@ namespace StoreEngine\Addons\MultiVendor\Api {
          * rate, and retroactively rewriting them would be confusing for accounting.
          */
         public function assign_products(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Remove one or more products from a vendor — the inverse of assign_products.
+         *
+         * Ownership (`post_author`) and the lookup table's vendor_id revert to a
+         * destination user. By default that's the store owner (the admin performing
+         * the action), but an admin may pass an explicit `new_owner_id` to reassign
+         * the products straight to another vendor or admin instead. Only products
+         * currently owned by this vendor are affected; historical commission_amount
+         * values are left untouched (same rationale as assign).
+         */
+        public function unassign_products(\WP_REST_Request $request)
         {
         }
         protected function shape(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor): array
@@ -4575,10 +5939,23 @@ namespace StoreEngine\Addons\MultiVendor {
         {
         }
         /**
-         * @param int   $order_id
-         * @param mixed $order
+         * Fires whenever the order's paid_status changes. Compute on the transition
+         * into `paid`.
+         *
+         * @param mixed  $order      Order object.
+         * @param string $new_status New paid status.
+         * @param string $old_status Previous paid status.
          */
-        public function on_order_paid($order_id, $order)
+        public function on_payment_status_changed($order, $new_status, $old_status)
+        {
+        }
+        /**
+         * Fires after the async lookup rows are written for an order. Compute only
+         * for paid orders (don't accrue commission on unpaid carts).
+         *
+         * @param int $order_id
+         */
+        public function on_lookup_stored($order_id)
         {
         }
         public function on_status_changed($order_id, $old_status, $new_status, $order)
@@ -4607,15 +5984,7 @@ namespace StoreEngine\Addons\MultiVendor {
     }
     class Database
     {
-        const SCHEMA_HASH_OPTION = 'storeengine_multi_vendor_schema_hash';
         public static function init()
-        {
-        }
-        /**
-         * Re-runs the addon's dbDelta whenever any schema file under
-         * addons/multi-vendor/database/ changes — no manual version bump needed.
-         */
-        public static function maybe_sync_schema(): void
         {
         }
     }
@@ -4657,6 +6026,18 @@ namespace StoreEngine\Addons\MultiVendor {
     class Hooks
     {
         public static function init()
+        {
+        }
+        /**
+         * Advance an order processing → completed when all items are delivered, if
+         * the `auto_complete_on_all_delivered` setting is enabled. Only advances from
+         * `processing` so we never resurrect a cancelled/refunded order or re-complete
+         * one. Vendors never set order status directly — this is the only automated
+         * path, and it's off by default.
+         *
+         * @param int|array|object $payload Order id, or the legacy model data shape.
+         */
+        public function maybe_auto_complete_order($payload): void
         {
         }
         /**
@@ -4715,6 +6096,12 @@ namespace StoreEngine\Addons\MultiVendor {
         public function enqueue_assets()
         {
         }
+        public function get_db_version(): string
+        {
+        }
+        public function install_tables(): void
+        {
+        }
         public function addon_activation_hook()
         {
         }
@@ -4741,6 +6128,19 @@ namespace StoreEngine\Addons\MultiVendor {
          * (e.g. on the cron) and there's no resolvable admin.
          */
         protected static function resolve_owner_user(): ?\WP_User
+        {
+        }
+        /**
+         * The store-owner user id products revert to when unassigned from a vendor.
+         * Prefers the administrator performing the action (they ARE the store), then
+         * falls back to the first administrator — always skipping `$exclude` (the
+         * vendor being moved away from) so we never "return" a product to itself.
+         *
+         * @param int $exclude Vendor user id to skip (so owner !== vendor).
+         *
+         * @return int Owner user id, or 0 when no eligible administrator exists.
+         */
+        public static function owner_user_id(int $exclude = 0): int
         {
         }
     }
@@ -4799,10 +6199,10 @@ namespace StoreEngine\Addons\MultiVendor {
         {
         }
         /**
-         * Render the filter bar above the archive content. Visible vendors only —
-         * default/owner vendor with `is_visible=0` is hidden from the list.
+         * Render the vendor dropdown inside the archive sidebar. Visible vendors
+         * only — default/owner vendor with `is_visible=0` is hidden from the list.
          */
-        public function render_filter_bar($context = '')
+        public function render_sidebar_filter()
         {
         }
     }
@@ -4905,6 +6305,14 @@ namespace StoreEngine\Addons\MultiVendor {
         public function render_overview()
         {
         }
+        /**
+         * Dashboard root (index) content for approved vendors: show the store
+         * analytics instead of the customer order list. Non-vendors and unapproved
+         * vendors fall through untouched so they keep the default dashboard.
+         */
+        public function render_root_overview()
+        {
+        }
         public function render_products()
         {
         }
@@ -4932,6 +6340,138 @@ namespace StoreEngine\Addons\MultiVendor {
     }
 }
 namespace StoreEngine\Addons\Paddle {
+    /**
+     * Paddle webhook receiver.
+     *
+     * Paddle confirms payments client-side, but the browser can close / lose its
+     * network / hit a still-`ready` transaction before `/checkout/place` finishes —
+     * leaving a paid order stranded in `draft` (invisible in the customer's
+     * dashboard). This server-to-server endpoint is the safety net: Paddle posts the
+     * event regardless of the browser, and we reconcile the order to a paid state.
+     *
+     * It also records subscription renewals (Paddle is merchant-of-record and bills
+     * renewals itself) and basic subscription lifecycle changes.
+     *
+     * Authoritative source of truth is always a fresh API read of the transaction
+     * (PaddleService::get_transaction) — the raw webhook body is never trusted to
+     * decide paid status; the optional signing-secret check is defence-in-depth.
+     */
+    class API
+    {
+        protected \StoreEngine\Addons\Paddle\GatewayPaddle $gateway;
+        public static function init($gateway): void
+        {
+        }
+        public function register_routes()
+        {
+        }
+        /**
+         * @param \WP_REST_Request $request
+         *
+         * @return \WP_REST_Response
+         */
+        public function handle_webhook(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        /**
+         * Reconcile a completed/paid Paddle transaction — either the initial order
+         * (the core bug fix) or a subscription renewal.
+         *
+         * @param object $data Paddle transaction payload.
+         *
+         * @return \WP_REST_Response
+         */
+        protected function handle_transaction($data): \WP_REST_Response
+        {
+        }
+        /**
+         * Fallback order resolution: find a StoreEngine order by the Paddle
+         * customer's email when the transaction carries no usable merchant_order_id.
+         *
+         * Safety: returns an order ONLY when EXACTLY ONE unpaid Paddle order matches
+         * the email. Zero or multiple matches log and return null, so an ambiguous
+         * email can never auto-complete the wrong order.
+         *
+         * @param object $data           Paddle transaction payload.
+         * @param string $transaction_id For log context.
+         *
+         * @return \StoreEngine\Classes\Order|null
+         */
+        protected function resolve_order_by_email($data, string $transaction_id)
+        {
+        }
+        /**
+         * Record a subscription renewal charged by Paddle.
+         *
+         * @param string $paddle_subscription_id
+         * @param string $transaction_id
+         *
+         * @return \WP_REST_Response
+         */
+        protected function handle_renewal(string $paddle_subscription_id, string $transaction_id): \WP_REST_Response
+        {
+        }
+        /**
+         * Apply a Paddle subscription lifecycle change to the StoreEngine subscription.
+         *
+         * @param object $data       Paddle subscription payload (->id is the Paddle sub id).
+         * @param string $new_status StoreEngine subscription status to move to.
+         *
+         * @return \WP_REST_Response
+         */
+        protected function update_subscription_status($data, string $new_status): \WP_REST_Response
+        {
+        }
+        /**
+         * Resolve a Paddle subscription id to a StoreEngine Subscription.
+         *
+         * Prefers the subscription entity (stamped with `_paddle_subscription_id` when
+         * created — see Hooks::link_paddle_subscription). Falls back to the initial
+         * order → subscription lookup.
+         *
+         * @param string $paddle_subscription_id
+         *
+         * @return \StoreEngine\Addons\Subscription\Classes\Subscription|null
+         */
+        protected function resolve_subscription(string $paddle_subscription_id): ?\StoreEngine\Addons\Subscription\Classes\Subscription
+        {
+        }
+        protected function get_webhook_secret(): string
+        {
+        }
+        /**
+         * Verify the Paddle-Signature header.
+         *
+         * Header format: `ts=<unix>;h1=<hmac_sha256(ts:rawbody)>`.
+         *
+         * @link https://developer.paddle.com/webhooks/signature-verification
+         */
+        protected function verify_signature(\WP_REST_Request $request, string $raw, string $secret): bool
+        {
+        }
+        /**
+         * Acknowledge a webhook with HTTP 200 so Paddle does not retry-storm logical
+         * no-ops (order not found, already paid, etc.).
+         */
+        protected function ack(string $status): \WP_REST_Response
+        {
+        }
+        /**
+         * Acknowledge a webhook that could NOT be processed, and write a log line so
+         * the failure is discoverable (StoreEngine logs / debug.log) for manual
+         * reconciliation. Still returns HTTP 200 so Paddle doesn't retry-storm — the
+         * log is the signal, not the status code.
+         *
+         * @param string $status  Short machine status (also returned in the body).
+         * @param array  $context Extra key=value pairs to include in the log line.
+         */
+        protected function fail(string $status, array $context = []): \WP_REST_Response
+        {
+        }
+        protected function log_failure(string $status, array $context = []): void
+        {
+        }
+    }
     class Assets
     {
         protected \StoreEngine\Addons\Paddle\GatewayPaddle $gateway;
@@ -5585,6 +7125,19 @@ namespace StoreEngine\Addons\Paddle {
         protected function setup()
         {
         }
+        /**
+         * Build the Paddle webhook REST URL safely.
+         *
+         * Admin fields are built while StoreEngine boots on `plugins_loaded` (via the
+         * settings AJAX handler), which is BEFORE WordPress instantiates the global
+         * `$wp_rewrite`. Calling rest_url() then fatals with
+         * "Call to a member function using_index_permalinks() on null". Instantiating
+         * `$wp_rewrite` on demand makes rest_url() safe; core replaces it later in
+         * wp-settings.php with an identical instance, so this has no side effects.
+         */
+        protected function get_webhook_url(): string
+        {
+        }
         protected function init_admin_fields()
         {
         }
@@ -5615,6 +7168,42 @@ namespace StoreEngine\Addons\Paddle {
         {
         }
         /**
+         * Verify a Paddle transaction, reconcile its line items onto the order, and
+         * advance the order to a paid state. Shared by the client-side
+         * process_payment() flow and the server-to-server webhook reconciliation
+         * (StoreEngine\Addons\Paddle\API::handle_webhook).
+         *
+         * Idempotent: returns a success result without re-processing if the order is
+         * already paid (guards against duplicate `transaction.completed` /
+         * `transaction.paid` webhook deliveries).
+         *
+         * @param \StoreEngine\Classes\Order  $order       The order to complete.
+         * @param object $transaction Paddle transaction data (->status, ->items, ->custom_data, ->subscription_id).
+         *
+         * @return array { result: 'success', redirect: string } on success, or [] when the
+         *               transaction does not authorize this order.
+         */
+        public function complete_order_from_transaction(\StoreEngine\Classes\Order $order, $transaction, bool $trusted = false): array
+        {
+        }
+        /**
+         * Process a refund through Paddle's adjustments API.
+         *
+         * Submits a refund adjustment against the order's Paddle transaction. Note:
+         * Paddle reviews refunds — the adjustment is usually created `pending_approval`
+         * and the money moves once Paddle/the seller approves it. Returning true means
+         * the refund was successfully *requested* (so StoreEngine records it).
+         *
+         * @param int        $order_id
+         * @param float|null $amount  Amount to refund; null/≥ total = full refund.
+         * @param string     $reason
+         *
+         * @return bool|\WP_Error
+         */
+        public function process_refund($order_id, $amount = null, $reason = '')
+        {
+        }
+        /**
          * GatewayAdapterInterface — pre-confirmation client-side handshake.
          *
          * Creates (or reuses) a Paddle transaction for the given order so the
@@ -5632,6 +7221,26 @@ namespace StoreEngine\Addons\Paddle {
     class Hooks
     {
         public static function init()
+        {
+        }
+        /**
+         * Flag Paddle-backed subscriptions as externally managed and carry the Paddle
+         * subscription id onto the subscription entity.
+         *
+         * Paddle is the merchant of record and bills renewals itself, so StoreEngine's
+         * internal scheduler must NOT try to charge them (it can't — Paddle has no
+         * `process_scheduled_payment`). Marking the subscription as manual-renewal
+         * keeps the scheduler from dispatching a gateway charge; the renewal is
+         * recorded instead by the Paddle webhook (StoreEngine\Addons\Paddle\API).
+         *
+         * The Paddle subscription id is stamped here (when the originating order's
+         * payment already captured it) so recurring-renewal webhooks can resolve back
+         * to this subscription.
+         *
+         * @param mixed $subscription The newly created Subscription.
+         * @param mixed $order        The originating order.
+         */
+        public static function link_paddle_subscription($subscription, $order)
         {
         }
         public static function save_order_item_meta(\StoreEngine\Classes\Order\OrderItemProduct $item)
@@ -5723,6 +7332,33 @@ namespace StoreEngine\Addons\Paddle {
         public static function get_paddle_amount($total, string $currency = '')
         {
         }
+        /**
+         * Build a Paddle `billing_cycle` for subscription prices.
+         *
+         * Without this, Paddle treats the line as a one-time charge and never creates a
+         * subscription/subscriber. Returns null for non-subscription prices so they stay
+         * one-time.
+         *
+         * @param string     $price_type    Price type (only 'subscription' recurs).
+         * @param string     $duration_type day|week|month|year (legacy plurals accepted).
+         * @param int|string $duration      Billing frequency (every N intervals).
+         *
+         * @return array{interval:string,frequency:int}|null
+         */
+        private static function build_billing_cycle(string $price_type, $duration_type, $duration): ?array
+        {
+        }
+        /**
+         * Build a one-time Paddle line item for a subscription setup/signup fee.
+         *
+         * Has NO billing_cycle, so Paddle charges it only on the first transaction
+         * (alongside the recurring item) and never on renewals.
+         *
+         * @return array
+         */
+        private static function build_setup_fee_item(string $fee_name, float $fee_price, string $product_name, string $tax_mode, $tax_category, string $currency): array
+        {
+        }
         public function get_api_url(string $endpoint): string
         {
         }
@@ -5763,7 +7399,29 @@ namespace StoreEngine\Addons\Paddle {
         public function update_transaction(string $transaction_id, array $data)
         {
         }
+        /**
+         * Create a Paddle refund adjustment against a transaction.
+         *
+         * @param string $transaction_id Paddle transaction id (txn_…).
+         * @param array  $items          [{ item_id, type:'full' } | { item_id, type:'partial', amount }].
+         * @param string $reason         Refund reason (shown in Paddle).
+         *
+         * @return object|\WP_Error The created adjustment, or WP_Error on failure.
+         */
+        public function create_refund_adjustment(string $transaction_id, array $items, string $reason = '')
+        {
+        }
         public function get_transaction(string $transaction_id)
+        {
+        }
+        /**
+         * Fetch a Paddle customer's email address by customer id.
+         *
+         * Used by the webhook order-resolution fallback when a transaction has no
+         * (resolvable) merchant_order_id — e.g. transactions created directly in
+         * Paddle (payment links, Retain). Returns '' when unavailable.
+         */
+        public function get_customer_email(string $customer_id): string
         {
         }
         public function create_discount(int $order_id, array $coupons)
@@ -6388,6 +8046,1150 @@ namespace StoreEngine\Addons\Razorpay {
         {
         }
         public function add_gateway(array $gateways): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seeder\Classes {
+    abstract class AbstractSeederProvider
+    {
+        /**
+         * Unique, stable key for this provider (e.g. "customers", "orders").
+         *
+         * Used as the CLI selector (`--only=customers`), the per-provider count
+         * flag (`--customers=20`) and the bucket downstream providers read from.
+         */
+        abstract public function get_key(): string;
+        /**
+         * Human-readable label shown in CLI output.
+         */
+        abstract public function get_label(): string;
+        /**
+         * Keys of other providers that MUST run before this one.
+         *
+         * @return string[]
+         */
+        public function get_dependencies(): array
+        {
+        }
+        /**
+         * How many records to create when no count is supplied on the CLI.
+         */
+        public function get_default_count(): int
+        {
+        }
+        /**
+         * Create the dummy records.
+         *
+         * Implementations MUST:
+         *  - record every persisted object via {@see SeederContext::record()} so it
+         *    can be removed by `wp storeengine seed reset`;
+         *  - read upstream ids via {@see SeederContext::ids()} rather than querying;
+         *  - never fatal on a single bad record — wrap risky work in try/catch and
+         *    keep going (the manager surfaces failures to the caller).
+         *
+         * @param SeederContext $context Shared run context.
+         * @param int           $count   Number of records to create.
+         */
+        abstract public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void;
+    }
+    class AdminPage
+    {
+        const MENU_SLUG = 'storeengine-seeder';
+        const CAPABILITY = 'manage_options';
+        const NONCE_ACTION = 'storeengine_seeder';
+        const NOTICE_PREFIX = 'storeengine_seeder_notice_';
+        public static function init(): void
+        {
+        }
+        public function register_page(): void
+        {
+        }
+        public function render(): void
+        {
+        }
+        public function handle_run(): void
+        {
+        }
+        public function handle_reset(): void
+        {
+        }
+        /**
+         * Shared nonce + capability gate for both action handlers.
+         */
+        private function authorize(): void
+        {
+        }
+        private function store_notice(string $type, string $message): void
+        {
+        }
+        /**
+         * @return array{type:string,message:string}|null
+         */
+        private function pull_notice(): ?array
+        {
+        }
+        private function redirect_back(): void
+        {
+        }
+    }
+    class Cli extends \WP_CLI_Command
+    {
+        /**
+         * Generate dummy data across registered providers (customers, products,
+         * coupons, orders, and anything addons register).
+         *
+         * ## OPTIONS
+         *
+         * [--count=<n>]
+         * : Default number of records per provider. Each provider has its own
+         * sensible default if omitted.
+         *
+         * [--only=<keys>]
+         * : Comma-separated provider keys to run (dependencies are pulled in
+         * automatically). Example: --only=products,orders
+         *
+         * [--<field>=<value>]
+         * : Override the count for a single provider by its key.
+         * Example: --customers=50 --orders=200
+         *
+         * [--force]
+         * : Allow running on a production environment (refused by default).
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine seed run
+         *     wp storeengine seed run --customers=50 --orders=200
+         *     wp storeengine seed run --only=products,orders --count=20
+         *
+         * @subcommand run
+         */
+        public function run($args, $assoc_args)
+        {
+        }
+        /**
+         * Delete every object created by previous seed runs (tracked in a manifest).
+         *
+         * ## OPTIONS
+         *
+         * [--force]
+         * : Skip the confirmation prompt.
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine seed reset
+         *     wp storeengine seed reset --force
+         *
+         * @subcommand reset
+         */
+        public function reset($args, $assoc_args)
+        {
+        }
+        /**
+         * List the registered seeder providers in dependency order.
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine seed list
+         *
+         * @subcommand list
+         */
+        public function list_providers($args, $assoc_args)
+        {
+        }
+    }
+    class Manager
+    {
+        /**
+         * Option holding the manifest of seeded object ids (for cleanup).
+         */
+        const MANIFEST_OPTION = 'storeengine_seeder_manifest';
+        /**
+         * @var array<string, AbstractSeederProvider>
+         */
+        private array $providers = [];
+        private bool $loaded = false;
+        private static ?\StoreEngine\Addons\Seeder\Classes\Manager $instance = null;
+        public static function get_instance(): \StoreEngine\Addons\Seeder\Classes\Manager
+        {
+        }
+        /**
+         * Build the provider registry once. Providers are contributed entirely
+         * through the filter — core + free providers by the seeder addon, Pro
+         * providers by the seeder-pro addon.
+         *
+         * @return array<string, AbstractSeederProvider>
+         */
+        public function load_providers(): array
+        {
+        }
+        /**
+         * @return array<string, AbstractSeederProvider>
+         */
+        public function get_providers(): array
+        {
+        }
+        public function get_provider(string $key): ?\StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+        {
+        }
+        /**
+         * Resolve providers into dependency order (depth-first topological sort).
+         *
+         * @param string[] $keys Subset to include; empty means all providers.
+         *
+         * @return AbstractSeederProvider[]
+         */
+        public function resolve_order(array $keys = []): array
+        {
+        }
+        /**
+         * Run a seed.
+         *
+         * @param array{only?:string[],counts?:array<string,int>,default_count?:?int,logger?:?callable,args?:array} $opts
+         *
+         * @return SeederContext
+         */
+        public function run(array $opts = []): \StoreEngine\Addons\Seeder\Classes\SeederContext
+        {
+        }
+        /**
+         * Delete everything recorded in the manifest.
+         *
+         * @param callable|null $logger Receives (string $type, int $id, bool $ok).
+         *
+         * @return array<string,int> Count of deleted objects by type.
+         */
+        public function reset(?callable $logger = null): array
+        {
+        }
+        /**
+         * Central deletion dispatcher keyed by object type, so providers only have
+         * to record `{ type, id }` and the framework knows how to remove it.
+         */
+        public function delete_object(string $type, int $id): bool
+        {
+        }
+        /**
+         * @return array<int, array{provider:string,type:string,id:int}>
+         */
+        public function get_manifest(): array
+        {
+        }
+        public function has_manifest(): bool
+        {
+        }
+    }
+    class SeederContext
+    {
+        /**
+         * Key of the provider currently running (set by the manager).
+         */
+        private string $provider_key = '';
+        /**
+         * Flat manifest of everything created this run.
+         *
+         * @var array<int, array{provider:string,type:string,id:int}>
+         */
+        private array $records = [];
+        /**
+         * Free-form run arguments (passed through from the CLI).
+         *
+         * @var array<string, mixed>
+         */
+        private array $args;
+        /**
+         * @param array<string, mixed> $args
+         */
+        public function __construct(array $args = [])
+        {
+        }
+        /**
+         * Set the active provider. Called by the manager before each provider runs.
+         *
+         * @internal
+         */
+        public function set_provider(string $key): void
+        {
+        }
+        /**
+         * Record a persisted object so it can be cleaned up and looked up.
+         *
+         * @param string $type Object type understood by the cleanup dispatcher
+         *                     (customer|product|price|order|subscription|coupon|refund
+         *                     or an addon type handled via the delete filter).
+         * @param int    $id   The object id.
+         */
+        public function record(string $type, int $id): void
+        {
+        }
+        /**
+         * Ids created earlier this run.
+         *
+         * @param string      $provider Provider key to read from.
+         * @param string|null $type     Optional object-type filter.
+         *
+         * @return int[]
+         */
+        public function ids(string $provider, ?string $type = null): array
+        {
+        }
+        /**
+         * The full run manifest.
+         *
+         * @return array<int, array{provider:string,type:string,id:int}>
+         */
+        public function get_records(): array
+        {
+        }
+        /**
+         * Read a pass-through run argument.
+         *
+         * @param mixed $default
+         *
+         * @return mixed
+         */
+        public function get_arg(string $key, $default = null)
+        {
+        }
+    }
+    class SeederData
+    {
+        /**
+         * Meta key stamped on every seeded post/user as a secondary safety marker.
+         * The run manifest is the source of truth for cleanup; this is just so a
+         * human (or a stray query) can recognise seeded rows.
+         */
+        const MARKER_META = '_storeengine_seeded';
+        private static array $first_names = ['Alex', 'Bianca', 'Carlos', 'Dana', 'Elena', 'Farid', 'Grace', 'Hassan', 'Ingrid', 'Jamal', 'Keiko', 'Liam', 'Mira', 'Noah', 'Olga', 'Priya', 'Quentin', 'Rosa', 'Sven', 'Tara', 'Umar', 'Vera', 'Wendy', 'Yusuf', 'Zoe'];
+        private static array $last_names = ['Adler', 'Bennett', 'Costa', 'Dewan', 'Eriksson', 'Ferreira', 'Gupta', 'Hoffman', 'Ibrahim', 'Jensen', 'Kowalski', 'Lopez', 'Mensah', 'Novak', 'Owusu', 'Petrov', 'Quintero', 'Rossi', 'Singh', 'Tanaka', 'Ueda', 'Vargas'];
+        private static array $product_adjectives = ['Classic', 'Premium', 'Eco', 'Compact', 'Deluxe', 'Smart', 'Pro', 'Lite', 'Vintage', 'Modern', 'Essential', 'Ultra', 'Everyday', 'Signature'];
+        private static array $product_nouns = ['Headphones', 'Notebook', 'Backpack', 'Coffee Mug', 'Desk Lamp', 'Water Bottle', 'T-Shirt', 'Sneakers', 'Wireless Mouse', 'Keyboard', 'Course Bundle', 'E-Book', 'Sticker Pack', 'Membership', 'Toolkit', 'Planner'];
+        private static array $cities = [['Austin', 'TX', '73301', 'US'], ['Denver', 'CO', '80014', 'US'], ['Seattle', 'WA', '98101', 'US'], ['Brooklyn', 'NY', '11201', 'US'], ['Miami', 'FL', '33101', 'US'], ['Portland', 'OR', '97201', 'US']];
+        private static array $streets = ['Maple Ave', 'Oak Street', 'Sunset Blvd', 'River Road', 'Hillcrest Dr', 'Park Lane', 'Birch Court', 'Cedar Way', 'Lincoln St', 'Market Street'];
+        /**
+         * Pick a random element from a non-empty array.
+         *
+         * @param array $list
+         *
+         * @return mixed
+         */
+        public static function pick(array $list)
+        {
+        }
+        public static function first_name(): string
+        {
+        }
+        public static function last_name(): string
+        {
+        }
+        /**
+         * A unique, obviously-fake email. The random suffix avoids collisions across
+         * runs (WordPress rejects duplicate user emails).
+         */
+        public static function email(string $first, string $last): string
+        {
+        }
+        public static function phone(): string
+        {
+        }
+        public static function product_name(): string
+        {
+        }
+        /**
+         * @return array{address_1:string,city:string,state:string,postcode:string,country:string}
+         */
+        public static function address(): array
+        {
+        }
+        /**
+         * A plausible retail price ending in .99 / .00 / .49.
+         */
+        public static function price(): float
+        {
+        }
+        /**
+         * A unix timestamp within the last $max_days_ago days.
+         */
+        public static function past_timestamp(int $max_days_ago = 120): int
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seeder\Providers {
+    class CouponProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_default_count(): int
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+    }
+    class CustomerProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        /**
+         * Known password set on every seeded customer so you can log in as one to
+         * test the storefront / customer dashboard. Safe for dev only — seeding is
+         * refused on production unless explicitly forced.
+         */
+        const DEFAULT_PASSWORD = 'password';
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_default_count(): int
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+    }
+    class InventoryProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_dependencies(): array
+        {
+        }
+        /**
+         * Count is ignored — this enhances every seeded product rather than
+         * creating a fixed number of new rows.
+         */
+        public function get_default_count(): int
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+    }
+    class OrderProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        /**
+         * Weighted status pool — completed/processing dominate, like a real store.
+         *
+         * @var string[]
+         */
+        private array $status_pool = [\StoreEngine\Classes\OrderStatus\OrderStatus::COMPLETED, \StoreEngine\Classes\OrderStatus\OrderStatus::COMPLETED, \StoreEngine\Classes\OrderStatus\OrderStatus::COMPLETED, \StoreEngine\Classes\OrderStatus\OrderStatus::PROCESSING, \StoreEngine\Classes\OrderStatus\OrderStatus::PROCESSING, \StoreEngine\Classes\OrderStatus\OrderStatus::ON_HOLD, \StoreEngine\Classes\OrderStatus\OrderStatus::PAYMENT_PENDING, \StoreEngine\Classes\OrderStatus\OrderStatus::CANCELLED, \StoreEngine\Classes\OrderStatus\OrderStatus::REFUNDED];
+        /**
+         * Statuses that represent money received.
+         *
+         * @var string[]
+         */
+        private array $paid_statuses = [\StoreEngine\Classes\OrderStatus\OrderStatus::COMPLETED, \StoreEngine\Classes\OrderStatus\OrderStatus::PROCESSING, \StoreEngine\Classes\OrderStatus\OrderStatus::REFUNDED];
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_default_count(): int
+        {
+        }
+        public function get_dependencies(): array
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+        private function apply_billing(\StoreEngine\Classes\Order $order, int $customer_id): void
+        {
+        }
+    }
+    class ProductProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_default_count(): int
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+    }
+    class SubscriptionProvider extends \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider
+    {
+        /**
+         * Recurring plans to spin up products for. [ label, price, duration, type ].
+         *
+         * @var array<int, array{0:string,1:float,2:int,3:string}>
+         */
+        private array $plans = [['Monthly Plan', 9.99, 1, 'month'], ['Annual Plan', 99.0, 1, 'year']];
+        /**
+         * Weighted status pool — mostly active.
+         *
+         * @var string[]
+         */
+        private array $status_pool = [\StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_ACTIVE, \StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_ACTIVE, \StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_ACTIVE, \StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_ON_HOLD, \StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_PENDING, \StoreEngine\Utils\Constants::SUBSCRIPTION_STATUS_CANCELLED];
+        public function get_key(): string
+        {
+        }
+        public function get_label(): string
+        {
+        }
+        public function get_default_count(): int
+        {
+        }
+        public function get_dependencies(): array
+        {
+        }
+        public function seed(\StoreEngine\Addons\Seeder\Classes\SeederContext $context, int $count): void
+        {
+        }
+        /**
+         * Create one digital product + recurring price per plan.
+         *
+         * @return array<int, array{price_id:int,duration:int,duration_type:string}>
+         */
+        private function seed_plan_products(\StoreEngine\Addons\Seeder\Classes\SeederContext $context): array
+        {
+        }
+        /**
+         * @param array{duration:int,duration_type:string} $plan
+         */
+        private function next_payment_ts(int $start_ts, array $plan): int
+        {
+        }
+        private function apply_billing(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, int $customer_id): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seeder {
+    final class Seeder extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'seeder';
+        /**
+         * Runs for every addon at load (active or not), so the Add-ons card is
+         * surfaced even while the seeder is disabled — that's how you toggle it on
+         * from StoreEngine → Add-ons. The framework itself still only loads in
+         * init_addon() when active. Registering one filter is negligible.
+         */
+        protected function __construct()
+        {
+        }
+        /**
+         * The single Add-ons card. Its `name` is the `seeder` slug, and because the
+         * Pro half shares that slug, toggling this one card enables/disables both.
+         *
+         * @param array $cards
+         *
+         * @return array
+         */
+        public function register_addon_card(array $cards): array
+        {
+        }
+        public function define_constants()
+        {
+        }
+        public function init_addon()
+        {
+        }
+        public function register_cli()
+        {
+        }
+        /**
+         * Add the core providers, plus free-addon providers gated on their addon.
+         *
+         * @param \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider[] $providers
+         *
+         * @return \StoreEngine\Addons\Seeder\Classes\AbstractSeederProvider[]
+         */
+        public function register_providers(array $providers): array
+        {
+        }
+        /**
+         * Teach the manager how to delete the addon-specific objects this addon's
+         * providers record. (Core types are handled by the manager itself.)
+         *
+         * @param bool   $handled
+         * @param string $type
+         * @param int    $id
+         */
+        public function delete_object($handled, $type, $id)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo\Classes {
+    class MetaBox
+    {
+        use \StoreEngine\Traits\Singleton;
+        const NONCE = 'storeengine_seo_meta';
+        protected function __construct()
+        {
+        }
+        public function register(): void
+        {
+        }
+        public function render(\WP_Post $post): void
+        {
+        }
+        public function save(int $post_id): void
+        {
+        }
+        /**
+         * Shared writer used by both the meta box and the REST controller.
+         */
+        public static function update_meta(int $post_id, array $data): void
+        {
+        }
+        public static function get_meta(int $post_id): array
+        {
+        }
+    }
+    class SeoGenerator
+    {
+        /**
+         * Whether the core AI client is present AND has a connected provider that
+         * can generate text. Delegates to the shared {@see AiService} so the AI
+         * surface lives in one place.
+         */
+        public static function core_ai_available(): bool
+        {
+        }
+        public static function is_available(): bool
+        {
+        }
+        /**
+         * Admin URL where the site connects an AI provider (WP 7.0 Connectors).
+         */
+        public static function settings_url(): string
+        {
+        }
+        /**
+         * Generate an SEO field for a product.
+         *
+         * @param int    $product_id
+         * @param string $type        title | description | keywords | og_title | og_description
+         *
+         * @return string|\WP_Error
+         */
+        public static function generate(int $product_id, string $type = 'title')
+        {
+        }
+        /**
+         * Instruction + soft length cap per SEO field.
+         *
+         * @return array{0:string, 1:int}
+         */
+        protected static function instruction_for(string $type): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo\Engine {
+    class ContextResolver
+    {
+        const TYPE_PRODUCT = 'product';
+        const TYPE_CATEGORY = 'category';
+        const TYPE_TAG = 'tag';
+        const TYPE_SHOP = 'shop';
+        const TYPE_CART = 'cart';
+        const TYPE_CHECKOUT = 'checkout';
+        const TYPE_ACCOUNT = 'account';
+        const TYPE_THANKYOU = 'thankyou';
+        const TYPE_NONE = 'none';
+        /**
+         * @return array{type:string,object:mixed}
+         */
+        public static function resolve(): array
+        {
+        }
+    }
+    class SchemaBuilder
+    {
+        /**
+         * Map a StoreEngine stock status to a schema.org availability URL.
+         */
+        protected static function availability(string $status): string
+        {
+        }
+        /**
+         * Collect product image URLs (featured first, then gallery).
+         *
+         * @return string[]
+         */
+        public static function get_images(\StoreEngine\Classes\AbstractProduct $product): array
+        {
+        }
+        /**
+         * Build the `offers` node from a product's price rows.
+         *
+         * Returns a single Offer when there's one price, an AggregateOffer when
+         * there are several, or null when the product has no purchasable price.
+         *
+         * @return array|null
+         */
+        protected static function build_offers(\StoreEngine\Classes\AbstractProduct $product): ?array
+        {
+        }
+        protected static function format_number(float $amount): string
+        {
+        }
+        /**
+         * AggregateRating node, or null when the product has no approved reviews.
+         * Google rejects an AggregateRating with a zero count, so the node is
+         * omitted entirely rather than emitted with ratingValue:0.
+         */
+        protected static function build_rating(\StoreEngine\Classes\AbstractProduct $product): ?array
+        {
+        }
+        /**
+         * Per-variant nodes for a variable product (schema.org hasVariant).
+         *
+         * @return array<int,array>
+         */
+        protected static function build_variants(\StoreEngine\Classes\AbstractProduct $product, string $currency): array
+        {
+        }
+        /**
+         * The full Product schema node.
+         */
+        public static function build_product(\StoreEngine\Classes\AbstractProduct $product, string $description = ''): array
+        {
+        }
+        /**
+         * BreadcrumbList: Home → Shop → primary category → product.
+         */
+        public static function build_breadcrumb(\StoreEngine\Classes\AbstractProduct $product): array
+        {
+        }
+        /**
+         * CollectionPage node for a product category / tag archive.
+         */
+        public static function build_collection_page(\WP_Term $term): array
+        {
+        }
+        /**
+         * BreadcrumbList for a category / tag archive: Home → Shop → term.
+         */
+        public static function build_term_breadcrumb(\WP_Term $term): array
+        {
+        }
+        protected static function crumb(int $position, string $name, string $url): array
+        {
+        }
+    }
+    class SeoData
+    {
+        public string $title = '';
+        public string $description = '';
+        public string $canonical = '';
+        /**
+         * @var array{index:bool,follow:bool}
+         */
+        public array $robots = ['index' => true, 'follow' => true];
+        public string $image = '';
+        /**
+         * Open Graph tags (property => content).
+         *
+         * @var array<string,string>
+         */
+        public array $og = [];
+        /**
+         * Twitter card tags (name => content).
+         *
+         * @var array<string,string>
+         */
+        public array $twitter = [];
+        /**
+         * JSON-LD graph nodes (each an associative array).
+         *
+         * @var array<int,array>
+         */
+        public array $schema = [];
+        public function robots_string(): string
+        {
+        }
+        /**
+         * Flat array for the REST/headless channel.
+         */
+        public function to_array(): array
+        {
+        }
+    }
+    class SeoEngine
+    {
+        use \StoreEngine\Traits\Singleton;
+        /**
+         * Per-request memo keyed by context signature.
+         *
+         * @var array<string,SeoData|null>
+         */
+        protected array $cache = [];
+        protected function settings(): \StoreEngine\Addons\Seo\Settings
+        {
+        }
+        /**
+         * Resolve the current request and compute its SEO data (standalone/bridge).
+         */
+        public function for_request(): ?\StoreEngine\Addons\Seo\Engine\SeoData
+        {
+        }
+        /**
+         * SEO data for a single product.
+         */
+        public function for_product(\StoreEngine\Classes\AbstractProduct $product): \StoreEngine\Addons\Seo\Engine\SeoData
+        {
+        }
+        /**
+         * SEO data for a product category / tag archive.
+         */
+        public function for_term(\WP_Term $term): \StoreEngine\Addons\Seo\Engine\SeoData
+        {
+        }
+        /**
+         * SEO data for a transactional page that should be kept out of the index.
+         */
+        protected function for_noindex_context(string $type): ?\StoreEngine\Addons\Seo\Engine\SeoData
+        {
+        }
+        protected function resolve_title(int $id, string $fallback): string
+        {
+        }
+        protected function resolve_description(int $id, \StoreEngine\Classes\AbstractProduct $product): string
+        {
+        }
+        protected function build_og(\StoreEngine\Addons\Seo\Engine\SeoData $data, string $type): array
+        {
+        }
+        protected function build_twitter(\StoreEngine\Addons\Seo\Engine\SeoData $data): array
+        {
+        }
+        protected function default_share_image(): string
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo {
+    class Hooks
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected function __construct()
+        {
+        }
+        public function register_provider(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo\Output {
+    class HeadRenderer
+    {
+        public static function render(): void
+        {
+        }
+        protected static function meta_description(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+        protected static function canonical(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+        protected static function robots(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+        protected static function open_graph(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+        protected static function twitter(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+        protected static function json_ld(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo\Providers {
+    interface SeoProvider
+    {
+        /**
+         * Whether the backing SEO plugin is active. Standalone always returns true.
+         */
+        public static function is_active(): bool;
+        /**
+         * Attach this provider's WordPress hooks.
+         */
+        public function register(): void;
+        /**
+         * 'bridge' or 'standalone' — used for diagnostics/telemetry.
+         */
+        public function mode(): string;
+    }
+    abstract class AbstractProvider implements \StoreEngine\Addons\Seo\Providers\SeoProvider
+    {
+        public function mode(): string
+        {
+        }
+        protected function engine(): \StoreEngine\Addons\Seo\Engine\SeoEngine
+        {
+        }
+        /**
+         * The computed SEO data for the current request, or null when not a
+         * StoreEngine context.
+         */
+        protected function current_data(): ?\StoreEngine\Addons\Seo\Engine\SeoData
+        {
+        }
+        /**
+         * The product being viewed, or null.
+         */
+        protected function current_product(): ?\StoreEngine\Classes\AbstractProduct
+        {
+        }
+        /**
+         * Robots applied through WordPress core's portable `wp_robots` filter so
+         * transactional pages get noindex regardless of the host SEO plugin.
+         */
+        public function apply_core_robots(): void
+        {
+        }
+        public function filter_core_robots(array $robots): array
+        {
+        }
+        /**
+         * Schema nodes for the current request, ready to merge into a host
+         * plugin's @graph. When $strip_context is true the redundant top-level
+         * `@context` is removed (a graph declares context once at the root).
+         *
+         * @return array<int,array>
+         */
+        protected function schema_nodes(bool $strip_context = false): array
+        {
+        }
+        /**
+         * Additive-JSON-LD fallback: echo schema nodes directly. Used by the
+         * standalone provider and by bridge adapters that can't merge into the
+         * host plugin's graph.
+         */
+        public function emit_jsonld(): void
+        {
+        }
+    }
+    class AioseoProvider extends \StoreEngine\Addons\Seo\Providers\AbstractProvider
+    {
+        public static function is_active(): bool
+        {
+        }
+        public function register(): void
+        {
+        }
+    }
+    class ProviderDetector
+    {
+        /**
+         * Bridge adapters in deterministic priority order.
+         *
+         * @return string[]
+         */
+        protected static function bridge_providers(): array
+        {
+        }
+        public static function resolve(): ?\StoreEngine\Addons\Seo\Providers\SeoProvider
+        {
+        }
+    }
+    class RankMathProvider extends \StoreEngine\Addons\Seo\Providers\AbstractProvider
+    {
+        public static function is_active(): bool
+        {
+        }
+        public function register(): void
+        {
+        }
+        /**
+         * @param array $data   Rank Math JSON-LD pieces, keyed.
+         * @param mixed $jsonld Rank Math JsonLD instance (unused).
+         *
+         * @return array
+         */
+        public function graft_schema($data, $jsonld = null)
+        {
+        }
+        /**
+         * @param array $robots Rank Math robots directives.
+         *
+         * @return array
+         */
+        public function filter_robots($robots)
+        {
+        }
+    }
+    class SeopressProvider extends \StoreEngine\Addons\Seo\Providers\AbstractProvider
+    {
+        public static function is_active(): bool
+        {
+        }
+        public function register(): void
+        {
+        }
+    }
+    class StandaloneProvider extends \StoreEngine\Addons\Seo\Providers\AbstractProvider
+    {
+        public static function is_active(): bool
+        {
+        }
+        public function mode(): string
+        {
+        }
+        public function register(): void
+        {
+        }
+        public function filter_title($title)
+        {
+        }
+    }
+    class YoastProvider extends \StoreEngine\Addons\Seo\Providers\AbstractProvider
+    {
+        public static function is_active(): bool
+        {
+        }
+        public function register(): void
+        {
+        }
+        /**
+         * Append our commerce schema nodes to Yoast's graph.
+         *
+         * @param array $graph   Array of graph pieces.
+         * @param mixed $context Yoast meta-tags context (unused).
+         *
+         * @return array
+         */
+        public function graft_schema($graph, $context = null)
+        {
+        }
+        /**
+         * @param array $robots Yoast robots directives (e.g. ['index'=>'index']).
+         *
+         * @return array
+         */
+        public function filter_robots($robots)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo\Rest {
+    final class RestProduct
+    {
+        const NS = 'storeengine/v1';
+        public static function init(): void
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        /* ------------------------------------------------------ product meta */
+        /**
+         * Per-product SEO meta plus AI availability, so the editor panel can show
+         * or hide its "Generate" actions without a second request.
+         */
+        protected static function meta_payload(int $id): array
+        {
+        }
+        public static function get_product_meta(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        public static function update_product_meta(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        /* ----------------------------------------------------------- AI gen */
+        public static function generate(\WP_REST_Request $request)
+        {
+        }
+    }
+    class RestSeo
+    {
+        public static function init()
+        {
+        }
+        /**
+         * @param \WP_REST_Response $response
+         * @param \WP_Post          $post
+         * @param \WP_REST_Request  $request
+         *
+         * @return \WP_REST_Response
+         */
+        public function add_seo($response, $post, $request)
+        {
+        }
+    }
+    class RestSettings
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        /** Keys this tab manages, with their value type for sanitisation. */
+        protected static function field_types(): array
+        {
+        }
+        protected static function current(): array
+        {
+        }
+        public static function get_settings(): \WP_REST_Response
+        {
+        }
+        public static function save_settings(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        /**
+         * @param string $type  bool | int | text | enum:a,b,c
+         * @param mixed  $value
+         *
+         * @return mixed
+         */
+        protected static function sanitize_field(string $type, $value)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Seo {
+    final class Seo extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'seo';
+        public function define_constants()
+        {
+        }
+        public function init_addon()
+        {
+        }
+        public function addon_activation_hook()
+        {
+        }
+    }
+    class Settings extends \StoreEngine\Classes\AbstractAddonSettings
+    {
+        protected ?string $settings_name = 'seo';
+        public function get_default_settings(): array
+        {
+        }
+        public function get_settings_fields(): array
         {
         }
     }
@@ -7183,7 +9985,28 @@ namespace StoreEngine\Addons\Stripe {
         public function validate_minimum_order_amount($order)
         {
         }
+        /**
+         * Build the Stripe webhook REST URL safely.
+         *
+         * Admin fields are built while StoreEngine boots on `plugins_loaded` (via the
+         * settings AJAX handler), which is BEFORE WordPress instantiates the global
+         * `$wp_rewrite`. Calling rest_url() then fatals with
+         * "Call to a member function using_index_permalinks() on null". Instantiating
+         * `$wp_rewrite` on demand makes rest_url() safe; core replaces it later in
+         * wp-settings.php with an identical instance, so this has no side effects.
+         */
+        protected function get_webhook_url(): string
+        {
+        }
         protected function init_admin_fields()
+        {
+        }
+        /**
+         * Whether native Stripe Billing (real Stripe subscriptions) is enabled for
+         * this gateway. When false, subscriptions use StoreEngine's own off-session
+         * renewal charging.
+         */
+        public function is_native_subscriptions_enabled(): bool
         {
         }
         public function payment_fields()
@@ -7245,6 +10068,21 @@ namespace StoreEngine\Addons\Stripe {
         public function process_payment(\StoreEngine\Classes\Order $order)
         {
         }
+        /**
+         * Native Stripe Billing checkout. Creates real Stripe subscriptions for the
+         * order's StoreEngine subscriptions, charging each first invoice off-session
+         * with the customer's saved card. One-time items (mixed cart) ride on the
+         * first subscription's first invoice.
+         *
+         * The card is collected + authenticated client-side via a SetupIntent (no
+         * up-front order charge), so the request carries a saved payment-method token
+         * by the time we get here — same acquisition as the trial SetupIntent branch.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        protected function process_native_subscription_payment(\StoreEngine\Classes\Order $order, $customer, \StoreEngine\Classes\OrderContext $order_context, $selected_payment_token)
+        {
+        }
         protected function stripe_process_payment(\StoreEngine\Classes\Order $order, $intent, $order_context)
         {
         }
@@ -7252,6 +10090,20 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
         public function maybe_update_source_on_subscription_order(\StoreEngine\Classes\Order $order, $source, $stripe_gateway_type = '')
+        {
+        }
+        /**
+         * Resolve a saved Stripe payment source (payment method) + customer for an
+         * order, so it can be charged off-session when the customer pays an
+         * installment / renewal order from the dashboard without re-entering a card.
+         * Prefers the order's own meta, then falls back to the subscription the
+         * order belongs to (initial or renewal).
+         *
+         * @param \StoreEngine\Classes\Order $order
+         *
+         * @return array{source_id:string, customer_id:string}
+         */
+        protected function resolve_saved_stripe_source(\StoreEngine\Classes\Order $order): array
         {
         }
         /**
@@ -11212,6 +14064,27 @@ namespace StoreEngine\Classes {
         {
         }
         /**
+         * Forcibly mark an order as paid and advance it to a paid state, running the
+         * full payment-complete flow (status transition, digital auto-complete, paid
+         * status + date, downstream hooks/emails).
+         *
+         * Unlike payment_complete() this handles EVERY starting status — including
+         * `draft`/`auto-draft` (a Paddle order stranded by the client-side flow) — by
+         * first "placing" the order, then advancing it. Idempotent: a no-op that
+         * returns true if the order is already paid.
+         *
+         * Shared seam used by both the Paddle webhook reconciliation
+         * (GatewayPaddle::complete_order_from_transaction) and the admin
+         * "Mark as paid" action (Ajax\Order::mark_order_as_paid).
+         *
+         * @param string $note Order note attached to the status transition.
+         *
+         * @return bool True if the order ended in a paid state.
+         */
+        public function mark_as_paid_force(string $note = ''): bool
+        {
+        }
+        /**
          * Gets order total - formatted for display.
          *
          * @param string $tax_display Type of tax display.
@@ -13410,14 +16283,24 @@ namespace StoreEngine\Addons\Stripe {
         //		}
         //	}
         /**
-         * @param $product
-         * @param $stripe_payment_intent
+         * Map a StoreEngine billing duration type to a Stripe recurring interval.
          *
-         * @return \StoreEngine\Stripe\Subscription
-         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
-         * @deprecated
+         * @param string $duration_type day|week|month|year (singular or plural).
+         *
+         * @return string Stripe interval (day|week|month|year).
          */
-        public function create_product_and_subscription($product, $stripe_payment_intent): \StoreEngine\Stripe\Subscription
+        public static function map_billing_interval(string $duration_type): string
+        {
+        }
+        /**
+         * Stripe caps a recurring interval at one year. Cap the interval_count so we
+         * fail loudly in our own code rather than getting a Stripe API error.
+         *
+         * @param string $interval Stripe interval (day|week|month|year).
+         *
+         * @return int
+         */
+        public static function max_interval_count(string $interval): int
         {
         }
         /**
@@ -13454,15 +16337,36 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
         /**
-         * @param $customer_id
-         * @param $price_id
-         * @param $default_payment_method
+         * Create a native Stripe (Billing) subscription using inline price_data, so
+         * there are no Stripe Product/Price objects to pre-create or cache.
+         *
+         * @param string $customer_id            Stripe customer id (cus_…).
+         * @param array  $items                  Recurring items. Each:
+         *                                        ['name', 'amount'(float), 'interval'(day|week|month|year),
+         *                                         'interval_count'(int), 'quantity'(int)].
+         * @param string $default_payment_method Stripe payment method id (pm_…).
+         * @param array  $args                   Optional:
+         *                                        ['currency', 'trial_period_days'(int),
+         *                                         'add_invoice_items'(array of ['name','amount','quantity']),
+         *                                         'metadata'(array), 'payment_behavior', 'off_session'(bool)].
          *
          * @return \StoreEngine\Stripe\Subscription
          * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
-         * @deprecated
          */
-        public function create_subscription($customer_id, $price_id, $default_payment_method): \StoreEngine\Stripe\Subscription
+        public function create_subscription(string $customer_id, array $items, string $default_payment_method, array $args = []): \StoreEngine\Stripe\Subscription
+        {
+        }
+        /**
+         * Update a Stripe subscription (e.g. cancel_at_period_end, pause/resume,
+         * default_payment_method change).
+         *
+         * @param string $subscription_id
+         * @param array  $params
+         *
+         * @return \StoreEngine\Stripe\Subscription
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function update_subscription(string $subscription_id, array $params): \StoreEngine\Stripe\Subscription
         {
         }
         public function get_payment_intent($stripe_payment_intent, $expand = false): \StoreEngine\Stripe\PaymentIntent
@@ -13748,6 +16652,26 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
         /**
+         * Guards against sending a sub-minimum (or zero) amount to Stripe.
+         *
+         * A PaymentIntent below the currency minimum otherwise fails with Stripe's
+         * opaque "The amount must be greater than or equal to the minimum charge
+         * amount ... use a Setup Intent instead" error. Throwing here instead yields
+         * an actionable message and leaves the order in a retryable state.
+         *
+         * Both sides are normalised to the smallest currency unit so the comparison
+         * is unit-safe across decimal / no-decimal / three-decimal currencies.
+         *
+         * @param \StoreEngine\Classes\Order $order
+         * @param float $amount Amount in major units (e.g. dollars).
+         *
+         * @return void
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException When the amount is below the Stripe minimum.
+         */
+        public static function assert_minimum_charge_amount(\StoreEngine\Classes\Order $order, float $amount): void
+        {
+        }
+        /**
          * Stripe uses smallest denomination in currencies such as cents.
          * We need to format the returned currency from Stripe into human readable form.
          * The amount is not used in any calculations so returning string is sufficient.
@@ -13772,6 +16696,68 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
         public function add_gateway(array $gateways): array
+        {
+        }
+    }
+    class SubscriptionSync
+    {
+        protected static \StoreEngine\Addons\Stripe\GatewayStripe $gateway;
+        /** Guards against a webhook→StoreEngine→Stripe cancel feedback loop. */
+        protected static bool $syncing_from_webhook = false;
+        public static function init(\StoreEngine\Addons\Stripe\GatewayStripe $gateway): void
+        {
+        }
+        public static function is_native(): bool
+        {
+        }
+        /**
+         * On subscription creation: when paid via Stripe in native mode, flag the
+         * subscription as manual-renewal so StoreEngine's scheduler never charges it
+         * (Stripe does). The actual Stripe subscription is created by
+         * create_for_order() during payment.
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription
+         * @param \StoreEngine\Classes\Order        $order
+         */
+        public static function link_stripe_subscription($subscription, $order): void
+        {
+        }
+        /**
+         * Create a native Stripe subscription for every StoreEngine subscription on
+         * the order, charging each first invoice off-session with the saved default
+         * payment method. Stores `_stripe_subscription_id` on each subscription and
+         * the order.
+         *
+         * @param \StoreEngine\Classes\Order  $order              The parent order.
+         * @param string $customer_id        Stripe customer id (cus_…).
+         * @param string $payment_method_id  Stripe payment method id (pm_…).
+         * @param array  $extra_invoice_items One-time items to bill on the FIRST
+         *                                    subscription's first invoice — each
+         *                                    ['name','amount','quantity'].
+         *
+         * @return array{created:string[], error:?\WP_Error}
+         */
+        public static function create_for_order(\StoreEngine\Classes\Order $order, string $customer_id, string $payment_method_id, array $extra_invoice_items = []): array
+        {
+        }
+        /**
+         * Build inline Stripe price_data items from a StoreEngine subscription's
+         * product line items + billing schedule.
+         */
+        protected static function build_items(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): array
+        {
+        }
+        /**
+         * Cancel the Stripe subscription when the StoreEngine subscription is
+         * cancelled (unless this cancellation originated from a Stripe webhook).
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription
+         */
+        public static function on_subscription_cancelled($subscription): void
+        {
+        }
+        /** Called by the webhook handler to suppress the cancel-sync feedback loop. */
+        public static function set_syncing_from_webhook(bool $value): void
         {
         }
     }
@@ -14125,8 +17111,80 @@ namespace StoreEngine\Addons\Stripe\Tax {
     }
 }
 namespace StoreEngine\Addons\Stripe {
+    class WebhookHandler
+    {
+        protected \StoreEngine\Addons\Stripe\GatewayStripe $gateway;
+        public static function init($gateway): void
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function handle_webhook(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        /**
+         * Record a renewal charge. Only `subscription_cycle` invoices are renewals —
+         * the very first invoice (`subscription_create`) is the initial order, which
+         * is already recorded at checkout.
+         *
+         * @param object $invoice Stripe Invoice object.
+         */
+        protected function handle_invoice_paid($invoice): \WP_REST_Response
+        {
+        }
+        /**
+         * @param object $invoice Stripe Invoice object.
+         */
+        protected function handle_invoice_failed($invoice): \WP_REST_Response
+        {
+        }
+        /**
+         * @param object $subscription Stripe Subscription object.
+         */
+        protected function handle_subscription_updated($subscription): \WP_REST_Response
+        {
+        }
+        protected function update_subscription_status(string $stripe_subscription_id, string $new_status): \WP_REST_Response
+        {
+        }
+        /**
+         * Resolve a Stripe subscription id to a StoreEngine Subscription, via the
+         * `_stripe_subscription_id` meta stamped at checkout. Mirrors Paddle.
+         */
+        protected function resolve_subscription(string $stripe_subscription_id): ?\StoreEngine\Addons\Subscription\Classes\Subscription
+        {
+        }
+        protected function get_webhook_secret(): string
+        {
+        }
+        protected function ack(string $status): \WP_REST_Response
+        {
+        }
+        protected function fail(string $status, array $context = []): \WP_REST_Response
+        {
+        }
+        protected function log_failure(string $status, array $context = []): void
+        {
+        }
+    }
     class Webhooks
     {
+        /**
+         * Events the native-billing webhook handler reacts to.
+         */
+        public static function events(): array
+        {
+        }
+        /**
+         * Best-effort auto-registration of the Stripe webhook endpoint. The returned
+         * signing secret is stored in an option that WebhookHandler reads as a
+         * fallback when the admin hasn't pasted one into the settings.
+         *
+         * The reliable path is still manual: create the endpoint
+         * (…/wp-json/storeengine/v1/stripe/trigger) in the Stripe dashboard and paste
+         * its signing secret into the gateway's "Webhook Signing Secret" field.
+         */
         public static function push_webhook_to_stripe()
         {
         }
@@ -15850,6 +18908,25 @@ namespace StoreEngine\Addons\Subscription\Classes {
         {
         }
         /**
+         * Whether the customer can pay an upcoming renewal early via the checkout /
+         * order-pay flow.
+         *
+         * Unlike can_user_renew_early(), this does NOT require the payment method to
+         * support `subscription_date_changes` (auto-charging a saved card). The
+         * customer pays the early renewal order through the normal order-pay page, so
+         * it works for manual / offline subscriptions (COD, bank transfer, Paddle)
+         * too. Subscriptions that already need payment are excluded — that overdue
+         * case is handled by the existing "Pay now" action.
+         *
+         * @param Subscription $subscription
+         * @param int          $user_id
+         *
+         * @return bool
+         */
+        public static function can_renew_early_via_checkout(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, int $user_id = 0): bool
+        {
+        }
+        /**
          * Returns a URL for early renewal of a subscription.
          *
          * @param Subscription $subscription WC_Subscription ID, or instance of a WC_Subscription object.
@@ -15977,6 +19054,61 @@ namespace StoreEngine\Addons\Subscription\Events {
         {
         }
     }
+    /**
+     * Carries a coupon's discount forward onto subscription renewals.
+     *
+     * When a subscription is created with a coupon flagged "recurring discount", we
+     * remember the code and how many renewals it should keep discounting. At each
+     * renewal we re-apply that coupon to the new order — bypassing expiry / usage
+     * validation so an early subscriber keeps the deal they signed up for.
+     *
+     * @see Coupon::get_recurring_discount()
+     * @see \StoreEngine\Addons\Subscription\Events\Renewal
+     */
+    class RecurringCoupon
+    {
+        const META_KEY = '_storeengine_recurring_coupons';
+        /**
+         * Codes currently being re-applied at renewal, so the validation-bypass
+         * filter only relaxes checks for those specific coupons.
+         *
+         * @var array<string, bool>
+         */
+        protected static array $applying = [];
+        public static function init(): void
+        {
+        }
+        /**
+         * Record which applied coupons should recur, and for how many renewals.
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription   $subscription Newly created subscription.
+         * @param \StoreEngine\Classes\AbstractOrder  $order        Parent order.
+         * @param \StoreEngine\Classes\Cart           $cart         Recurring cart.
+         */
+        public function remember_recurring_coupons(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, \StoreEngine\Classes\AbstractOrder $order, \StoreEngine\Classes\Cart $cart): void
+        {
+        }
+        /**
+         * Re-apply remembered coupons to a freshly created renewal order.
+         *
+         * @param \StoreEngine\Classes\Order $order The renewal order (already saved).
+         */
+        public function apply_to_renewal(\StoreEngine\Classes\Order $order): void
+        {
+        }
+        /**
+         * While re-applying a recurring coupon at renewal, treat it as valid so an
+         * expired / usage-capped coupon still honours the locked-in discount.
+         *
+         * @param null|bool|\WP_Error $pre    Short-circuit value.
+         * @param \StoreEngine\Classes\Coupon              $coupon Coupon being validated.
+         *
+         * @return null|bool|\WP_Error
+         */
+        public function bypass_validation_for_renewal($pre, \StoreEngine\Classes\Coupon $coupon)
+        {
+        }
+    }
     class Renewal
     {
         public static function init(): void
@@ -16097,6 +19229,22 @@ namespace StoreEngine\Addons\Subscription {
         public static function maybe_change_users_subscription()
         {
         }
+        /**
+         * Handle the customer-initiated "Pay Next Renewal Now" (early renewal) action.
+         *
+         * Creates the upcoming renewal order and sends the customer to the standard
+         * order-pay page to settle it with any available gateway. When that order is
+         * paid, UpdateSubscriptionStatus::update_after_paid() advances the
+         * subscription one billing cycle automatically (it processes the renewal
+         * payment for the active subscription).
+         *
+         * Unlike the auto-charge early renewal, this works for manual / offline
+         * subscriptions because it routes through checkout instead of charging a
+         * saved payment method.
+         */
+        public static function maybe_pay_subscription_renewal_early()
+        {
+        }
         public static function add_related_orders_to_view_subscription(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription)
         {
         }
@@ -16148,10 +19296,7 @@ namespace StoreEngine\Addons\Subscription {
         public static function set_allowed_price_types(array $types): array
         {
         }
-        public static function clear_cart_before_adding_subscription(\StoreEngine\Classes\Cart &$cart, \StoreEngine\Classes\Price $price): void
-        {
-        }
-        public static function on_added_to_cart(array $data): array
+        public static function clear_cart_before_adding_subscription(\StoreEngine\Classes\Cart &$cart, \StoreEngine\Classes\Price $price, $quantity = 1, $variation_id = 0, $variation = [], $item_data = []): void
         {
         }
         public static function gateway_javascript_params(array $gateways): array
@@ -16976,10 +20121,41 @@ namespace StoreEngine {
     }
     class Addons
     {
+        /**
+         * Single option holding every addon's installed DB schema version, as a
+         * map of `addon-slug => version`. The central manager compares each active
+         * addon's get_db_version() against this and reruns install_tables() on a
+         * mismatch — no per-addon option or per-addon `init` hook needed.
+         */
+        const DB_VERSION_OPTION = 'storeengine_addons_db_version';
+        /**
+         * Active addon instances collected during loading, keyed by slug.
+         *
+         * @var \StoreEngine\Classes\AbstractAddon[]
+         */
+        private array $loaded_addons = [];
         public static function init()
         {
         }
         private function addons_loader()
+        {
+        }
+        /**
+         * Sync the schema of every active core addon loaded this request.
+         */
+        public function sync_addon_schemas(): void
+        {
+        }
+        /**
+         * Compare each addon's declared DB version against the stored map and
+         * rerun install_tables() where they differ. Writes the map once at the end.
+         *
+         * Reusable so other loaders (e.g. storeengine-pro) can sync their own
+         * addon instances into the same `storeengine_addons_db_version` option.
+         *
+         * @param \StoreEngine\Classes\AbstractAddon[] $addons Addon instances keyed by slug.
+         */
+        public static function sync_schema_for(array $addons): void
         {
         }
         /**
@@ -17090,6 +20266,23 @@ namespace StoreEngine\Admin {
         {
         }
         /**
+         * Register the shared "Withdrawals" management menu.
+         *
+         * Both the multi-vendor and affiliate addons feed payout/withdrawal
+         * requests into this screen, so it must appear whenever EITHER addon is
+         * active. Previously the multi-vendor addon owned the menu outright (see
+         * MultiVendor\Admin::register_menu), so turning multi-vendor off hid the
+         * affiliate withdrawals too. Registering it centrally — gated by both
+         * addon statuses — keeps it reachable for either addon independently.
+         *
+         * The sub-items and the gating capability adapt to whichever addons are
+         * active. The React BackendDashboard route falls back to the affiliate
+         * Payouts screen when multi-vendor is inactive.
+         */
+        public static function inject_withdrawals_menu_item(array $menu): array
+        {
+        }
+        /**
          * Inject Inventory, POS, Returns, and Reports entries so the React admin
          * shell shows them in the side menu and the route switcher mounts the
          * React pages. Each addon-owned menu is gated by its own active status —
@@ -17132,6 +20325,20 @@ namespace StoreEngine\Admin {
         {
         }
         public function dispatch_notices()
+        {
+        }
+        /**
+         * Warn the admin when shipping is active but customers can't enter the
+         * address details needed to calculate it.
+         *
+         * Shipping zone matching and rate calculation rely on a "full" shipping
+         * address. When BOTH the State / Region and Postal Code checkout fields are
+         * disabled, the only location detail left is the City — so an empty City
+         * (or a store that expected to collect a ZIP) silently yields zero shipping
+         * options with no feedback to the shopper. Surface that misconfiguration so
+         * it isn't discovered the hard way at checkout.
+         */
+        public static function add_shipping_address_fields_notice()
         {
         }
         private function respond_error($message, $code = 403)
@@ -17412,6 +20619,117 @@ namespace StoreEngine\Admin {
         }
     }
 }
+namespace StoreEngine\AI {
+    final class AiService
+    {
+        const CLIENT_CLASS = '\WordPress\AiClient\AiClient';
+        /* ---------------------------------------------------------- availability */
+        /**
+         * The WP 7.0 AI Client class is present (i.e. running WordPress 7.0+).
+         */
+        public static function is_supported(): bool
+        {
+        }
+        /**
+         * A provider connector capable of text generation is configured.
+         */
+        public static function has_connector(): bool
+        {
+        }
+        /**
+         * Supported AND connected — the only gate the UI/REST should check.
+         */
+        public static function is_available(): bool
+        {
+        }
+        /**
+         * Whether image generation is available (separate provider capability).
+         */
+        public static function image_available(): bool
+        {
+        }
+        /**
+         * Admin URL where the site connects an AI provider (WP 7.0 Connectors).
+         */
+        public static function connectors_url(): string
+        {
+        }
+        /**
+         * Availability snapshot for the admin React surfaces (one REST call drives
+         * every "Generate" button's visibility).
+         */
+        public static function status(): array
+        {
+        }
+        /* ------------------------------------------------------------- generation */
+        /**
+         * Generate plain text.
+         *
+         * @param string $prompt
+         * @param array  $opts {
+         *     @type string       $system           System instruction.
+         *     @type float        $temperature      0.0–1.0.
+         *     @type string|array $model_preference Preferred model id(s).
+         *     @type int          $max_chars        Soft length hint folded into the prompt.
+         * }
+         *
+         * @return string|\WP_Error
+         */
+        public static function generate(string $prompt, array $opts = [])
+        {
+        }
+        /**
+         * Generate a structured (JSON) response validated against $schema.
+         *
+         * Uses the builder's native JSON response when available, otherwise instructs
+         * the model to reply with JSON and decodes the text — so structured output
+         * works regardless of the exact WP 7.0 builder surface.
+         *
+         * @param string $prompt
+         * @param array  $schema JSON schema (object).
+         * @param array  $opts   See {@see generate()}.
+         *
+         * @return array|\WP_Error
+         */
+        public static function generate_json(string $prompt, array $schema, array $opts = [])
+        {
+        }
+        /**
+         * Generate an image; returns the provider URL (or data) the model produced.
+         *
+         * @param string $prompt
+         * @param array  $opts
+         *
+         * @return string|\WP_Error
+         */
+        public static function generate_image(string $prompt, array $opts = [])
+        {
+        }
+        /* ----------------------------------------------------------------- internals */
+        /**
+         * Build a configured prompt builder. Length + JSON hints are folded into the
+         * prompt text (always honoured); temperature/model/system are applied through
+         * the fluent builder when those methods exist.
+         *
+         * @return object WordPress\AiClient prompt builder.
+         */
+        private static function build(string $prompt, array $opts)
+        {
+        }
+        /**
+         * Tolerant JSON decode — strips ```json fences the model may wrap around the
+         * payload, then decodes to an associative array.
+         *
+         * @return array|null
+         */
+        private static function decode_json(string $raw): ?array
+        {
+        }
+        private static function unavailable_error(): \WP_Error
+        {
+        }
+    }
+}
 namespace StoreEngine {
     class Ajax
     {
@@ -17589,6 +20907,18 @@ namespace StoreEngine\Ajax {
         {
         }
         public function change_order_status($payload)
+        {
+        }
+        /**
+         * Forcibly mark an order as paid (admin escape hatch).
+         *
+         * Covers cases where a real payment happened at the gateway (e.g. Paddle) but
+         * the order was left unpaid/stranded in our system. Runs the full
+         * payment-complete flow via Order::mark_as_paid_force().
+         *
+         * @param array $payload
+         */
+        public function mark_order_as_paid($payload)
         {
         }
     }
@@ -17969,6 +21299,45 @@ namespace StoreEngine\API {
         {
         }
     }
+    class BundleSync extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'bundle';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permissions_check()
+        {
+        }
+        /**
+         * Process one page of paid orders containing the bundle.
+         *
+         * @param \WP_REST_Request $request
+         *
+         * @return \WP_REST_Response|\WP_Error
+         */
+        public function sync_purchasers(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Ensure one order carries every current bundle item.
+         *
+         * Merges items missing from the order line's `_bundles` snapshot, grants
+         * download permissions for the newly-added products, and fires an action so
+         * add-ons can backfill their own grants (e.g. licenses).
+         *
+         * @param \StoreEngine\Classes\AbstractOrder $order
+         * @param int           $bundle_id
+         * @param array         $bundle_items Current bundle contents from BundledProduct::get_bundles().
+         *
+         * @return array{downloads:int,new_products:int[]}
+         */
+        protected function sync_order(\StoreEngine\Classes\AbstractOrder $order, int $bundle_id, array $bundle_items): array
+        {
+        }
+    }
     class Cart extends \StoreEngine\API\AbstractRestApiController
     {
         protected $rest_base = 'cart';
@@ -18170,6 +21539,50 @@ namespace StoreEngine\API {
          * create_payment_intent) stay consistent.
          */
         protected static function pipe_legacy_post_keys(array $source): void
+        {
+        }
+        /**
+         * Push the submitted address + chosen shipping method onto the session
+         * cart/customer and recalculate totals.
+         *
+         * Shared by /update (live, on every field change) and /place (final, right
+         * before payment) so shipping + tax always reflect the address the shopper
+         * is actually checking out with — and the amount charged matches the amount
+         * shown. The cart's customer is the same instance as StoreEngine::customer
+         * (Cart sets it in its constructor), so writing here updates what
+         * get_shipping_packages() reads during calculate_totals().
+         *
+         * @param array $fields Checkout field payload (REST `fields`).
+         */
+        private static function sync_cart_from_fields(array $fields): void
+        {
+        }
+        /**
+         * Stable fingerprint of the money-bearing cart totals. Used to decide whether
+         * a field change actually moved a total (and therefore the summary needs a
+         * re-render). Rounded so float noise doesn't cause spurious refreshes.
+         *
+         * @param \StoreEngine\Classes\Cart|null $cart
+         *
+         * @return string
+         */
+        private static function totals_fingerprint($cart): string
+        {
+        }
+        /**
+         * Collect the available shipping rates for the current cart and the chosen
+         * rate id, for the embedded checkout's shipping-method selector.
+         *
+         * Rates come from the packages the cart computed during calculate_totals()
+         * (single-package model — package 0). Returns [ rates[], chosenId ]; rates
+         * is empty when the cart doesn't need shipping or the address isn't complete
+         * enough to quote yet.
+         *
+         * @param \StoreEngine\Classes\Cart|null $cart
+         *
+         * @return array{0: array, 1: string}
+         */
+        private static function collect_shipping_rates($cart): array
         {
         }
         public static function hydrate_cart_from_session($cart, array $session): void
@@ -18896,6 +22309,30 @@ namespace StoreEngine\API {
         public function register_stock_routes()
         {
         }
+        public function rest_generate_code(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Resolve a batch of SKUs / barcodes to printable label data
+         * (name, sku, barcode, selling price). Exact match only — keyed by the
+         * original code so the Barcode Labels page can auto-fill pasted entries.
+         * Codes with no match are simply omitted from the response map.
+         */
+        public function rest_resolve_codes(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Default (lowest-order) base price for a product, from the price table.
+         */
+        protected function resolve_base_price(int $product_id): float
+        {
+        }
+        /**
+         * Human-readable variant attribute label, e.g. "Black / M".
+         */
+        protected function resolve_variant_label(int $variation_id): string
+        {
+        }
         /**
          * Permission gate for the per-product stock routes. The old gate just
          * checked the plural `edit_storeengine_products` cap, which the multi-
@@ -19430,6 +22867,421 @@ namespace StoreEngine {
          * Unserializing instances of this class is forbidden.
          */
         public function __wakeup()
+        {
+        }
+    }
+}
+namespace StoreEngine\Backup {
+    class ArchiveWriter
+    {
+        /**
+         * Recursively zip a directory (entries added via addFile so large jsonl
+         * files are streamed by the zip extension, never loaded into memory).
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public static function zip_dir(string $src_dir, string $dest_zip): void
+        {
+        }
+        /**
+         * Append a directory tree into an existing zip under an internal prefix,
+         * streaming each file (no temp copy). Used for the optional "files" group so
+         * we never duplicate large uploads to disk.
+         *
+         * @param ?string $skip_real Absolute realpath to a subdir to exclude (e.g. the backups dir itself).
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public static function append_dir(string $zip_path, string $src_dir, string $internal_prefix, ?string $skip_real = null): void
+        {
+        }
+        /**
+         * Read a single entry from a zip without extracting everything (used to peek
+         * at manifest.json during import inspection).
+         */
+        public static function read_entry(string $zip_path, string $entry): ?string
+        {
+        }
+        /**
+         * Extract an entire archive to a directory.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public static function unzip(string $zip_path, string $dest_dir): void
+        {
+        }
+        /**
+         * Recursively delete a directory (cleanup of temp working dirs).
+         */
+        public static function rrmdir(string $dir): void
+        {
+        }
+    }
+    class BackupAjaxHandler extends \StoreEngine\Classes\AbstractAjaxHandler
+    {
+        protected string $namespace = STOREENGINE_PLUGIN_SLUG . '_backup';
+        public function __construct()
+        {
+        }
+        protected function truthy($v): bool
+        {
+        }
+        /* ----------------------------------------------------------------- Export */
+        public function export_stream(array $payload)
+        {
+        }
+        public function download(array $payload)
+        {
+        }
+        public function list_backups()
+        {
+        }
+        public function delete_backup(array $payload)
+        {
+        }
+        /* ----------------------------------------------------------------- Import */
+        public function upload()
+        {
+        }
+        protected function upload_path(string $upload_id): string
+        {
+        }
+        public function start_import(array $payload)
+        {
+        }
+        public function import_stream(array $payload)
+        {
+        }
+    }
+    /**
+     * Central registry + helpers shared by the Exporter, Importer, CLI and AJAX
+     * handler. Knows which `{$wpdb->prefix}storeengine_*` tables exist (discovered
+     * dynamically, never hardcoded), how to classify them into selectable groups,
+     * which tables are transient/ephemeral (never backed up), and where archives
+     * live.
+     */
+    class BackupManager
+    {
+        /**
+         * Bump when the archive layout changes in a backward-incompatible way.
+         */
+        const FORMAT_VERSION = 1;
+        const CLEANUP_HOOK = 'storeengine/backup/cleanup_archive';
+        /**
+         * Table basenames (without the `{$prefix}storeengine_` part) that are
+         * transient/ephemeral and must NEVER be exported or truncated on restore.
+         */
+        const DENYLIST = ['cart', 'reserved_stock', 'sessions', 'otp_verifications', 'abandoned_cart'];
+        /**
+         * Log tables — included only when the "logs" group is selected.
+         */
+        const LOG_TABLES = ['logs', 'email_log', 'download_log'];
+        /**
+         * Pro license-management tables — included only with the "licensing" group.
+         */
+        const LICENSING_TABLES = ['licenses', 'deployment_versions', 'installation_events', 'installation_eventmeta', 'usage_analytics'];
+        public static function init(): void
+        {
+        }
+        /* -------------------------------------------------------------------------
+         * Paths
+         * ---------------------------------------------------------------------- */
+        /**
+         * Private, web-inaccessible directory for archives. Lives inside
+         * STOREENGINE_SECURE_UPLOADS_DIR which already ships a `Require all denied`
+         * .htaccess (and we add belt-and-suspenders protection here too).
+         */
+        public static function backups_dir(): string
+        {
+        }
+        public static function ensure_backups_dir(): string
+        {
+        }
+        /* -------------------------------------------------------------------------
+         * Table discovery + classification
+         * ---------------------------------------------------------------------- */
+        /**
+         * Every `{$prefix}storeengine_*` table currently in the DB (core + whatever
+         * pro addons are active). Returns full table names.
+         *
+         * @return string[]
+         */
+        public static function all_tables(): array
+        {
+        }
+        /**
+         * Strip the `{$prefix}storeengine_` prefix → bare basename used for grouping.
+         */
+        public static function basename(string $table): string
+        {
+        }
+        /**
+         * Which selectable group a table belongs to: 'logs' | 'licensing' | 'store'.
+         * 'store' is the always-included core/addon data set.
+         */
+        public static function table_group(string $table): string
+        {
+        }
+        /**
+         * Resolve the set of tables to back up for the given options.
+         *
+         * @param array $opts { licensing:bool(default true), logs:bool(default false) }
+         *
+         * @return string[] Full table names.
+         */
+        public static function tables_for(array $opts): array
+        {
+        }
+        /**
+         * StoreEngine-registered custom post types to back up. Enumerated
+         * dynamically (prefix `storeengine` / `se_`) so no addon CPT is missed;
+         * filterable for anything outside that convention.
+         *
+         * @return string[]
+         */
+        public static function post_types(): array
+        {
+        }
+        /**
+         * The `option_name` LIKE patterns whose options are backed up. Single
+         * `storeengine%` already covers `storeengine_pro%`.
+         *
+         * @return string[]
+         */
+        public static function option_like_patterns(): array
+        {
+        }
+        /* -------------------------------------------------------------------------
+         * Listing existing backups + filename-based (stable) download
+         * ---------------------------------------------------------------------- */
+        /**
+         * Only our own archive filenames are ever downloadable/deletable.
+         */
+        public static function is_valid_backup_name(string $name): bool
+        {
+        }
+        /**
+         * Resolve a backup filename to an absolute path inside the backups dir, or
+         * null if it's invalid / escapes the dir / doesn't exist. (Path-traversal safe.)
+         */
+        public static function resolve_backup_path(string $name): ?string
+        {
+        }
+        /**
+         * List the archives currently stored (newest first). Excludes the
+         * `uploads/` (incoming import) and `tmp-*`/`restore-*` working dirs.
+         *
+         * @return array<int,array{filename:string,size:string,bytes:int,created:string,timestamp:int,is_safety:bool}>
+         */
+        public static function list_backups(): array
+        {
+        }
+        /* -------------------------------------------------------------------------
+         * Download tokens (legacy, optional)
+         * ---------------------------------------------------------------------- */
+        public static function issue_download_token(string $filepath): string
+        {
+        }
+        public static function resolve_download_token(string $token): ?string
+        {
+        }
+        /* -------------------------------------------------------------------------
+         * Cleanup
+         * ---------------------------------------------------------------------- */
+        /**
+         * Action Scheduler / cron callback — delete an expired archive.
+         */
+        public static function cleanup_archive(string $filepath): void
+        {
+        }
+    }
+    /**
+     * Export / import a complete StoreEngine backup.
+     */
+    class Cli
+    {
+        /**
+         * Export all StoreEngine data into a single .zip archive.
+         *
+         * ## OPTIONS
+         *
+         * [--file=<path>]
+         * : Destination .zip path. Defaults to the private backups dir (path printed).
+         *
+         * [--groups=<list>]
+         * : Comma list of optional groups to include: licensing,logs,users,files.
+         *   (Core store data + settings + catalog are always included.)
+         *   Default: licensing.
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine backup export --file=/tmp/se.zip --groups=licensing,users
+         *
+         * @when after_wp_load
+         */
+        public function export($args, $assoc_args)
+        {
+        }
+        /**
+         * Restore a StoreEngine backup (REPLACES existing StoreEngine data).
+         *
+         * ## OPTIONS
+         *
+         * --file=<path>
+         * : Path to the backup .zip.
+         *
+         * [--yes]
+         * : Skip the confirmation prompt.
+         *
+         * [--no-safety]
+         * : Skip the automatic pre-restore safety backup (not recommended).
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine backup import --file=/tmp/se.zip --yes
+         *
+         * @when after_wp_load
+         */
+        public function import($args, $assoc_args)
+        {
+        }
+        /**
+         * Compare a backup's manifest row counts against the current database.
+         *
+         * ## OPTIONS
+         *
+         * --file=<path>
+         * : Path to the backup .zip.
+         *
+         * @when after_wp_load
+         */
+        public function verify($args, $assoc_args)
+        {
+        }
+    }
+    class Exporter
+    {
+        /** @var array{licensing:bool,logs:bool,users:bool,files:bool} */
+        protected array $opts;
+        /** @var callable|null function(float $percent, string $message): void */
+        protected $progress;
+        protected int $batch_size;
+        protected int $rows_total = 0;
+        protected int $rows_done = 0;
+        /**
+         * @param array         $opts     licensing(bool,true), logs(bool,false), users(bool,false), files(bool,false)
+         * @param callable|null $progress function(float $percent, string $message): void
+         */
+        public function __construct(array $opts = [], ?callable $progress = null)
+        {
+        }
+        protected function report(float $percent, string $message): void
+        {
+        }
+        /**
+         * Run the export. Returns the absolute path to the created .zip.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function run(): string
+        {
+        }
+        /* -------------------------------------------------------------------- */
+        /**
+         * Stream one table to a jsonl file in batches. Returns its column list.
+         *
+         * @return string[]
+         */
+        protected function dump_table(string $table, string $out_path): array
+        {
+        }
+        protected function dump_options(string $out_path): int
+        {
+        }
+        protected function count_posts(array $post_types): int
+        {
+        }
+        protected function dump_posts(array $post_types, string $work): int
+        {
+        }
+        protected function dump_terms(array $taxonomies, array $post_types, string $work): void
+        {
+        }
+        protected function dump_users(string $work): int
+        {
+        }
+        /* -------------------------------------------------------------------- */
+        protected function open(string $path)
+        {
+        }
+        protected function write_file(string $path, string $contents): void
+        {
+        }
+    }
+    class Importer
+    {
+        /** @var callable|null function(float $percent, string $message): void */
+        protected $progress;
+        protected int $batch = 500;
+        public function __construct(?callable $progress = null)
+        {
+        }
+        protected function report(float $percent, string $message): void
+        {
+        }
+        /**
+         * Read the manifest + a compatibility preview WITHOUT writing anything.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function inspect(string $zip_path): array
+        {
+        }
+        /**
+         * Restore. $opts: safety(bool,true), users(bool,true if present), files(bool,true if present).
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function run(string $zip_path, array $opts = []): array
+        {
+        }
+        /* -------------------------------------------------------------------- */
+        /**
+         * Stream a jsonl file into a table in batches, preserving NULLs and PKs.
+         * Only inserts columns that exist in the (current) target table.
+         */
+        protected function restore_jsonl_into_table(string $file, string $table): void
+        {
+        }
+        /**
+         * Multi-row INSERT preserving NULLs. Columns derived from the first row.
+         */
+        protected function insert_rows(string $table, array $rows): void
+        {
+        }
+        protected function restore_options(string $file): void
+        {
+        }
+        protected function restore_posts(array $manifest, string $work): void
+        {
+        }
+        protected function restore_terms(string $work): void
+        {
+        }
+        protected function restore_users(string $work): void
+        {
+        }
+        /**
+         * REPLACE INTO from a jsonl file (upsert by PK) — used for shared WP tables
+         * we must not truncate (terms, users).
+         */
+        protected function upsert_jsonl(string $file, string $table): void
+        {
+        }
+        protected function replace_rows(string $table, array $rows): void
+        {
+        }
+        protected function copy_tree(string $src, string $dest): void
         {
         }
     }
@@ -20361,6 +24213,18 @@ namespace StoreEngine\Classes {
         protected array $coupon_discount_totals = [];
         protected array $coupon_discount_tax_totals = [];
         /**
+         * Per-item coupon discount breakdown: Item Key => Coupon Code => discount amount.
+         *
+         * @var array
+         */
+        protected array $coupon_discount_per_item = [];
+        /**
+         * BOGO rewarded-unit counts: Coupon Code => Item Key => units (int).
+         *
+         * @var array
+         */
+        protected array $bogo_rewards = [];
+        /**
          * This stores the chosen shipping methods for the cart item packages.
          *
          * @var array
@@ -20887,6 +24751,22 @@ namespace StoreEngine\Classes {
         {
         }
         /**
+         * Sets the per-item coupon discount breakdown.
+         *
+         * @param array $value Item Key => Coupon Code => discount amount.
+         */
+        public function set_coupon_discount_per_item(array $value = [])
+        {
+        }
+        /**
+         * Sets the BOGO rewarded-unit counts.
+         *
+         * @param array $value Coupon Code => Item Key => units.
+         */
+        public function set_bogo_rewards(array $value = [])
+        {
+        }
+        /**
          * Sets the array of applied coupon codes.
          *
          * @param array $value List of applied coupon codes.
@@ -21036,6 +24916,22 @@ namespace StoreEngine\Classes {
          * @return array
          */
         public function get_coupon_discount_tax_totals(): array
+        {
+        }
+        /**
+         * Return the per-item coupon discount breakdown.
+         *
+         * @return array Item Key => Coupon Code => discount amount.
+         */
+        public function get_coupon_discount_per_item(): array
+        {
+        }
+        /**
+         * Return the BOGO rewarded-unit counts.
+         *
+         * @return array Coupon Code => Item Key => units.
+         */
+        public function get_bogo_rewards(): array
         {
         }
         /**
@@ -22115,7 +26011,40 @@ namespace StoreEngine\Classes {
         public string $created = '0000-00-00 00:00:00';
         public string $created_gmt = '0000-00-00 00:00:00';
         public ?array $settings = null;
-        protected array $internal_meta_keys = ['_storeengine_coupon_name', '_storeengine_coupon_type', '_storeengine_coupon_amount', '_storeengine_coupon_time_type', '_storeengine_coupon_usage_limit', '_storeengine_coupon_customer_usage_limit', '_storeengine_coupon_type_of_min_requirement', '_storeengine_coupon_min_purchase_quantity', '_storeengine_coupon_min_purchase_amount', '_storeengine_coupon_who_can_use', '_storeengine_coupon_start_date_time', '_storeengine_coupon_end_date_time', '_storeengine_coupon_usage_count', '_storeengine_coupon_used_by', '_storeengine_coupon_valid_customers', '_storeengine_coupon_valid_prices'];
+        protected array $internal_meta_keys = [
+            '_storeengine_coupon_name',
+            '_storeengine_coupon_type',
+            '_storeengine_coupon_amount',
+            '_storeengine_coupon_time_type',
+            '_storeengine_coupon_usage_limit',
+            '_storeengine_coupon_customer_usage_limit',
+            '_storeengine_coupon_type_of_min_requirement',
+            '_storeengine_coupon_min_purchase_quantity',
+            '_storeengine_coupon_min_purchase_amount',
+            '_storeengine_coupon_who_can_use',
+            '_storeengine_coupon_start_date_time',
+            '_storeengine_coupon_end_date_time',
+            '_storeengine_coupon_usage_count',
+            '_storeengine_coupon_used_by',
+            '_storeengine_coupon_valid_customers',
+            '_storeengine_coupon_valid_prices',
+            // Product / category restrictions. NOTE: these intentionally omit the
+            // `coupon_` segment so Coupon::get() maps them to the settings keys the
+            // getters below already read (e.g. `product_categories`, not
+            // `coupon_product_categories`).
+            '_storeengine_product_ids',
+            '_storeengine_excluded_product_ids',
+            '_storeengine_product_categories',
+            '_storeengine_excluded_product_categories',
+            '_storeengine_exclude_sale_items',
+            '_storeengine_email_restrictions',
+            '_storeengine_coupon_recurring_discount',
+            '_storeengine_coupon_recurring_discount_limit',
+            '_storeengine_coupon_bogo_buy_qty',
+            '_storeengine_coupon_bogo_get_qty',
+            '_storeengine_coupon_bogo_discount',
+            '_storeengine_coupon_auto_apply',
+        ];
         /**
          * Sorting.
          *
@@ -22176,10 +26105,46 @@ namespace StoreEngine\Classes {
         public function get_product_categories(): array
         {
         }
-        public function get_excluded_product_categories()
+        public function get_excluded_product_categories(): array
         {
         }
-        public function get_exclude_sale_items()
+        public function get_exclude_sale_items(): bool
+        {
+        }
+        /**
+         * Whether this coupon's discount should keep applying to subscription renewals.
+         */
+        public function get_recurring_discount(): bool
+        {
+        }
+        /**
+         * Number of renewals to keep the recurring discount for. 0 = forever.
+         */
+        public function get_recurring_discount_limit(): int
+        {
+        }
+        /**
+         * BOGO: quantity the customer must buy to unlock the reward.
+         */
+        public function get_bogo_buy_qty(): int
+        {
+        }
+        /**
+         * BOGO: number of (cheapest) units discounted per qualifying group.
+         */
+        public function get_bogo_get_qty(): int
+        {
+        }
+        /**
+         * BOGO: percentage off the rewarded units (0-100; 100 = free).
+         */
+        public function get_bogo_discount(): float
+        {
+        }
+        /**
+         * Whether this coupon should be applied to the cart automatically.
+         */
+        public function get_auto_apply(): bool
         {
         }
         public function get_email_restrictions()
@@ -22831,6 +26796,15 @@ namespace StoreEngine\Classes {
          */
         protected array $discounts = [];
         /**
+         * Number of "free"/rewarded units granted per item by BOGO coupons.
+         *
+         * Lets the UI know which line(s) received a Buy-X-Get-Y reward and how many
+         * units of that line are free, so it can be rendered as a separate FREE line.
+         *
+         * @var array[] Code => Item Key => units (int)
+         */
+        protected array $bogo_rewards = [];
+        /**
          * Discounts Constructor.
          *
          * @param Cart|Order $object Cart or order object.
@@ -22959,6 +26933,38 @@ namespace StoreEngine\Classes {
         {
         }
         /**
+         * Record a discount amount on an item for a coupon. Used by add-ons that
+         * handle custom coupon types via `storeengine/discounts/handle_coupon`.
+         *
+         * @param string     $coupon_code     Coupon code.
+         * @param int|string $item_key        Item key.
+         * @param int        $amount_in_cents Discount amount in cents.
+         */
+        public function record_discount(string $coupon_code, $item_key, int $amount_in_cents): void
+        {
+        }
+        /**
+         * Record BOGO rewarded units on an item for a coupon (drives the FREE-line UI).
+         *
+         * @param string     $coupon_code Coupon code.
+         * @param int|string $item_key    Item key.
+         * @param int        $units       Rewarded units to add.
+         */
+        public function record_bogo_reward(string $coupon_code, $item_key, int $units = 1): void
+        {
+        }
+        /**
+         * Public accessor for the items a coupon applies to (post product/category
+         * filtering). Used by add-ons handling custom coupon types.
+         *
+         * @param Coupon $coupon Coupon object.
+         *
+         * @return array<int|string,object>
+         */
+        public function get_items_to_apply(\StoreEngine\Classes\Coupon $coupon): array
+        {
+        }
+        /**
          * Sort by price.
          *
          * @param object $a First element.
@@ -23023,6 +27029,18 @@ namespace StoreEngine\Classes {
          * @return int|float Total discounted.
          */
         protected function apply_coupon_fixed_cart(\StoreEngine\Classes\Coupon $coupon, array $items_to_apply, $amount = null)
+        {
+        }
+        /**
+         * Get the BOGO rewarded-unit counts per coupon and item.
+         *
+         * The "Buy X, Get Y" engine itself lives in StoreEngine Pro (Advanced
+         * Coupons), which records rewards via record_bogo_reward(); this getter just
+         * exposes them to the UI (FREE-line rendering).
+         *
+         * @return array[] Code => Item Key => units (int)
+         */
+        public function get_bogo_rewards(): array
         {
         }
         /**
@@ -24525,6 +28543,33 @@ namespace StoreEngine\Classes {
         {
         }
         public function set_order_id($value)
+        {
+        }
+    }
+    /**
+     * Records a shipment against a single order line item.
+     *
+     * Single source of truth for the per-item fulfilment flow shared by the admin
+     * order screen and the multi-vendor vendor dashboard, so the two can't drift:
+     * validates the status (enum + forward-only + digital), writes the status to
+     * the lookup row (keyed by order_item_id — never product_id, which would touch
+     * duplicate-product lines), stores courier/tracking as order meta, logs an
+     * order note, and fires the shipment + core delivery hooks.
+     *
+     * Callers layer their own authorisation on top (vendors check ownership; the
+     * admin path is gated by capability at the AJAX layer).
+     */
+    class OrderShipment
+    {
+        /**
+         * @param int    $order_item_id Lookup PRIMARY KEY of the line being shipped.
+         * @param string $new_status    One of Constants::get_shipping_statuses().
+         * @param array  $tracking      [courier, tracking_number, tracking_url].
+         * @param string $actor_label   Who performed it (vendor store / "Store admin").
+         *
+         * @return array|\WP_Error Shipment result on success.
+         */
+        public static function record(int $order_item_id, string $new_status, array $tracking = [], string $actor_label = '')
         {
         }
     }
@@ -27623,6 +31668,51 @@ namespace StoreEngine\Classes {
         public static function make_internal_barcode(int $variation_id): string
         {
         }
+        /**
+         * Monotonic per-key counter stored in an option. Used for the {number}
+         * token and for internal barcode bodies so generated codes don't collide.
+         */
+        public static function next_sequence(string $key): int
+        {
+        }
+        /**
+         * Generate a SKU from the admin "SKU pattern" setting, ensuring uniqueness.
+         *
+         * Pattern tokens: {prefix is literal text}, {number} (zero-padded running
+         * sequence), {name} (product name slug), {category} (primary category slug),
+         * {year}.
+         *
+         * @param array{name?:string, category?:string} $ctx
+         */
+        public static function generate_sku(array $ctx = []): string
+        {
+        }
+        protected static function render_sku_pattern(string $pattern, array $ctx, int $padding): string
+        {
+        }
+        /**
+         * Generate a unique internal EAN-13 barcode using the configured in-store
+         * prefix and a running sequence.
+         */
+        public static function generate_barcode(): string
+        {
+        }
+        /**
+         * Build an EAN-13 from an arbitrary in-store prefix + a number, padded to
+         * the 12-digit base then suffixed with the check digit.
+         */
+        public static function make_internal_barcode_with_prefix(string $prefix, int $number): string
+        {
+        }
+        public static function barcode_exists(string $code): bool
+        {
+        }
+        /**
+         * Primary-category slug for a product, for the {category} SKU token.
+         */
+        public static function product_category_slug(int $product_id): string
+        {
+        }
         protected static function ean13_check_digit(string $base12): string
         {
         }
@@ -28882,6 +32972,68 @@ namespace StoreEngine\Cli {
         public function delete($args, $assoc_args)
         {
         }
+        /**
+         * Detect and repair license keys that fail client activation.
+         *
+         * A key containing characters the client SDK strips on submit — notably "%"
+         * followed by two hex digits — can never match what was issued, so activation
+         * returns "Invalid license". This scans for such keys and reissues each one
+         * with a fresh, URL-safe key. Keys that are already valid are left untouched,
+         * so working activations are never disturbed.
+         *
+         * ## OPTIONS
+         *
+         * [--id=<id>]
+         * : Only check a single license ID.
+         *
+         * [--dry-run]
+         * : Detect and report affected licenses without changing anything.
+         *
+         * [--yes]
+         * : Skip the confirmation prompt.
+         *
+         * ## EXAMPLES
+         *
+         *     # Detect only — list keys that would fail activation.
+         *     wp storeengine license heal-keys --dry-run
+         *
+         *     # Detect and regenerate every affected key.
+         *     wp storeengine license heal-keys
+         *
+         *     # Repair a single license non-interactively.
+         *     wp storeengine license heal-keys --id=3065 --yes
+         *
+         * @subcommand heal-keys
+         */
+        public function heal_keys($args, $assoc_args)
+        {
+        }
+        /**
+         * Force-regenerate the key for specific license(s).
+         *
+         * Unlike `heal-keys` (which only touches keys that would fail activation),
+         * this reissues the key for the given license regardless of its current
+         * value — e.g. to hand a customer a fresh key on request. The OLD key stops
+         * working immediately, so the new key must be shared.
+         *
+         * ## OPTIONS
+         *
+         * --id=<id>
+         * : License ID to regenerate. Accepts a comma-separated list of IDs.
+         *
+         * [--yes]
+         * : Skip the confirmation prompt.
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine license regenerate --id=3065
+         *     wp storeengine license regenerate --id=3065,3066 --yes
+         *
+         * @subcommand regenerate
+         */
+        public function regenerate($args, $assoc_args)
+        {
+        }
     }
     class Order extends \WP_CLI_Command
     {
@@ -29265,6 +33417,28 @@ namespace StoreEngine\Frontend {
         {
         }
         /**
+         * Apply a coupon code supplied via the URL to the current cart.
+         */
+        public static function apply_url_coupon(): void
+        {
+        }
+        /**
+         * Add every valid auto-apply coupon to the cart before totals are computed.
+         *
+         * @param \StoreEngine\Classes\Cart $cart
+         */
+        public static function apply_auto_coupons($cart): void
+        {
+        }
+        /**
+         * Codes of all published coupons flagged for auto-apply.
+         *
+         * @return string[]
+         */
+        protected static function get_auto_apply_codes(): array
+        {
+        }
+        /**
          * @throws \StoreEngine\classes\Exceptions\StoreEngineException
          */
         public static function check_cart_minimum_requirement(\StoreEngine\classes\Coupon $coupon)
@@ -29304,6 +33478,30 @@ namespace StoreEngine\Frontend {
         {
         }
         public function dispatch_hook()
+        {
+        }
+        /**
+         * Stop the core/shortcode block from running wpautop() on StoreEngine markup.
+         *
+         * In FSE block templates WordPress runs do_shortcode() BEFORE do_blocks()
+         * (see get_the_block_template_html()), so by the time the core/shortcode
+         * block renders, its inner content is already the fully-expanded StoreEngine
+         * HTML. The block's render callback then calls wpautop() on it, which wraps
+         * our inline elements (e.g. the price <label> list) in stray <p> tags and
+         * injects <br> — breaking the single-product layout.
+         *
+         * We short-circuit the block render for our own output only: detection keys
+         * on the `storeengine-` class prefix, which exists only AFTER expansion. In
+         * the classic the_content path do_blocks() runs first, so the inner content
+         * is still the raw `[storeengine_*]` tag (an underscore, never `storeengine-`)
+         * and this never matches — leaving that path's existing behaviour intact.
+         *
+         * @param string|null $pre_render   Pre-rendered content. Default null.
+         * @param array       $parsed_block The parsed block.
+         *
+         * @return string|null
+         */
+        public function prevent_shortcode_block_autop($pre_render, $parsed_block)
         {
         }
         public function load_comments_template($template)
@@ -29541,6 +33739,23 @@ namespace StoreEngine\Hooks {
          * @return void
          */
         protected function give_permissions(\StoreEngine\Classes\AbstractOrder $order, string $price_type = 'onetime')
+        {
+        }
+        /**
+         * Grant download permissions for a single product on an already-paid order,
+         * skipping any download files already granted. Idempotent.
+         *
+         * Used by the bundle "sync to existing buyers" feature to retroactively give
+         * past purchasers access to a product newly added to a bundle. Unlike
+         * {@see self::give_permissions()} this never deletes existing rows, so the
+         * download counts/limits on already-granted files are preserved.
+         *
+         * @param \StoreEngine\Classes\AbstractOrder $order
+         * @param int           $product_id
+         *
+         * @return int Number of permission rows inserted.
+         */
+        public function grant_product_to_order(\StoreEngine\Classes\AbstractOrder $order, int $product_id): int
         {
         }
         protected function get_product_download_data(int $product_id): ?array
@@ -30709,14 +34924,88 @@ namespace StoreEngine {
     {
         use \StoreEngine\Traits\Singleton;
         /**
+         * Option storing the enabled state + sort index of every gateway, so the
+         * loader can know what is enabled without instantiating a single gateway.
+         *
+         * Shape: [ id => [ 'enabled' => bool, 'index' => int ] ]
+         */
+        const MANIFEST_OPTION = 'storeengine_payment_gateways_state';
+        /**
+         * Materialized gateway instances, keyed by gateway id. Populated lazily.
+         *
          * @var \StoreEngine\Payment\Gateways\PaymentGateway[]
          */
         protected array $gateways = [];
+        /**
+         * Registry of gateway id => class-string|callable factory. Built on `init`
+         * without instantiating anything.
+         *
+         * @var array<string, string|callable>
+         */
+        protected array $gateway_classes = [];
+        protected ?array $manifest = null;
         protected bool $loaded = false;
+        protected bool $all_loaded = false;
+        protected bool $enabled_loaded = false;
         protected function __construct()
         {
         }
         public function load_gateways()
+        {
+        }
+        /**
+         * Instantiate (once) and return a single gateway by id, or null if unknown.
+         *
+         * Works for disabled gateways too, so by-id lookups (refunds, renewals,
+         * webhooks) keep resolving even when a gateway is turned off.
+         */
+        protected function materialize_gateway(string $id): ?\StoreEngine\Payment\Gateways\PaymentGateway
+        {
+        }
+        /**
+         * Fire the gateway-specific init hook (wires up Hooks/Assets) for an enabled
+         * gateway, preserving the contract from the eager loader.
+         *
+         * @example
+         * ```php
+         * add_action( 'storeengine/gateway/stripe/init', function( GatewayStripe $gateway ) {} );
+         * ```
+         */
+        protected function boot_gateway(\StoreEngine\Payment\Gateways\PaymentGateway $gateway): void
+        {
+        }
+        /**
+         * Enabled state + sort index of every registered gateway, without
+         * instantiating any of them. Reads a single autoloaded option; if missing it
+         * is back-filled once from the per-gateway settings options (cheap reads, no
+         * instantiation) and cached.
+         */
+        protected function get_manifest(): array
+        {
+        }
+        /**
+         * Update a single gateway's enabled/index entry in the manifest after its
+         * settings are saved, so the next request's frontend hot path sees the change
+         * without instantiating every gateway.
+         */
+        protected function sync_manifest(\StoreEngine\Payment\Gateways\PaymentGateway $gateway): void
+        {
+        }
+        /**
+         * Instantiate every registered gateway. Used by admin / settings contexts
+         * that must render the full list. The cost is paid only when those run.
+         */
+        protected function ensure_all(): void
+        {
+        }
+        /**
+         * Instantiate only the gateways flagged enabled in the manifest. Used by the
+         * frontend/checkout hot path — typically 2–4 gateways instead of 20+.
+         */
+        protected function ensure_enabled(): void
+        {
+        }
+        protected function sort_gateways(): void
         {
         }
         public static function on_init_gateways()
@@ -30789,7 +35078,9 @@ namespace StoreEngine {
         {
         }
         /**
-         * Get array of registered gateway ids
+         * Get array of registered gateway ids.
+         *
+         * Returns the full registered set without instantiating any gateway.
          *
          * @return array of strings
          */
@@ -30834,9 +35125,13 @@ namespace StoreEngine {
         /**
          * Set the current, active gateway.
          *
-         * @param \StoreEngine\Payment\Gateways\PaymentGateway[] $gateways Available payment gateways.
+         * @param \StoreEngine\Payment\Gateways\PaymentGateway[] $gateways  Available payment gateways.
+         * @param string           $preferred Optional gateway id to prefer (e.g. the
+         *                                     order's saved payment method on the
+         *                                     order-pay page, where there is no draft
+         *                                     cart order to read from).
          */
-        public function set_current_gateway(array $gateways)
+        public function set_current_gateway(array $gateways, string $preferred = '')
         {
         }
     }
@@ -32872,7 +37167,7 @@ namespace StoreEngine\Utils {
          * Required payload keys, accounting for the contextual `needs_shipping` flag:
          * shipping fields are only required when the cart actually needs shipping.
          */
-        public static function required_payload_keys(bool $needs_shipping = true): array
+        public static function required_payload_keys(bool $needs_shipping = true, string $shipping_country = ''): array
         {
         }
     }
@@ -32909,6 +37204,23 @@ namespace StoreEngine\Utils {
         const OUT_FOR_DELIVERY = 'out_for_delivery';
         const DELIVERED = 'delivered';
         const RETURNED = 'returned';
+        /**
+         * The shipping/fulfilment lifecycle, in forward order. Index position is the
+         * single source of truth for "forward-only" transition checks — a lower index
+         * may never be set after a higher one. Shared by the admin shipping AJAX and
+         * the multi-vendor fulfilment REST endpoint so the two can't drift.
+         *
+         * @return string[]
+         */
+        public static function get_shipping_statuses(): array
+        {
+        }
+        /**
+         * Human-readable label for a shipping status value.
+         */
+        public static function get_shipping_status_label(string $status): string
+        {
+        }
         // @TODO Need implementation.
         const SUBSCRIPTION_STATUS_ACTIVE = 'active';
         const SUBSCRIPTION_STATUS_PENDING = 'pending';
@@ -34270,7 +38582,7 @@ namespace StoreEngine\Utils\traits {
         public static function get_price(int $price_id)
         {
         }
-        public static function get_prices_array_by_product_id(int $product_id, $context = 'view'): array
+        public static function get_prices_array_by_product_id(int $product_id, $context = 'view', bool $force_show_hidden = false): array
         {
         }
         /**
@@ -34278,7 +38590,7 @@ namespace StoreEngine\Utils\traits {
          *
          * @return array
          */
-        public static function get_prices_array_from_product(\StoreEngine\Classes\AbstractProduct $product, $context = 'view'): array
+        public static function get_prices_array_from_product(\StoreEngine\Classes\AbstractProduct $product, $context = 'view', bool $force_show_hidden = false): array
         {
         }
         public static function get_product_variation(int $id)
@@ -35803,7 +40115,23 @@ namespace {
         public function set_global_settings()
         {
         }
-        public function load_dependency()
+        public function load_dependency(): bool
+        {
+        }
+        /**
+         * Require a bootstrap file, or — if it is missing (e.g. an interrupted
+         * update left the plugin folder incomplete) — register an admin notice and
+         * signal the caller to abort booting instead of fataling with a white
+         * screen. Must not depend on any autoloaded class.
+         *
+         * @param string $path   Absolute path to the file to require.
+         * @param string $label  Human-readable plugin name for the notice.
+         * @param bool   $notify Whether to show an admin notice when missing.
+         *                       Pass false for optional files.
+         *
+         * @return bool True if required successfully, false if the file is missing.
+         */
+        private static function require_or_notice(string $path, string $label, bool $notify = \true): bool
         {
         }
         /**
@@ -35852,6 +40180,47 @@ namespace {
         public function activated_redirect($plugin, $network_wide = \null)
         {
         }
+    }
+}
+/**
+ * EU VAT Helpers
+ *
+ * Pure functions only — no class state, no side effects.
+ *
+ * @package StoreEngine\Addons\EuVat
+ */
+namespace StoreEngine\Addons\EuVat {
+    /**
+     * Country codes covered by VIES (EU member states + Northern Ireland).
+     * Greece reports as "EL" via VIES, not "GR".
+     */
+    function eu_country_codes(): array
+    {
+    }
+    /**
+     * Map an ISO 3166-1 alpha-2 country code to its VAT country code.
+     * Greece (GR) → EL; Northern Ireland uses XI for VAT purposes.
+     */
+    function vat_country_code(string $country): string
+    {
+    }
+    /**
+     * Reverse of vat_country_code() — turn a VAT-country code back into ISO.
+     */
+    function iso_country_code(string $vat_country): string
+    {
+    }
+    /**
+     * Strip everything except A-Z and 0-9 from a raw VAT number, uppercase.
+     */
+    function normalize_vat_input(string $input): string
+    {
+    }
+    /**
+     * True when a normalized VAT string starts with a VIES-supported country code.
+     */
+    function has_vat_country_prefix(string $normalized): bool
+    {
     }
 }
 namespace {
