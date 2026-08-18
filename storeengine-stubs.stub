@@ -1256,37 +1256,6 @@ namespace StoreEngine\Addons\Csv\Utils {
         }
     }
 }
-namespace StoreEngine\Addons\Email\Admin {
-    class Settings
-    {
-        public function __construct()
-        {
-        }
-        public function include_settings($settings)
-        {
-        }
-        public static function get_settings_saved_data()
-        {
-        }
-        public static function get_settings_default_data()
-        {
-        }
-        public static function save_settings($form_data = false)
-        {
-        }
-    }
-}
-namespace StoreEngine\Addons\Email {
-    class Ajax
-    {
-        public function __construct()
-        {
-        }
-        private function dispatch_hooks()
-        {
-        }
-    }
-}
 namespace StoreEngine\Addons\Email\Traits {
     trait Email
     {
@@ -1320,6 +1289,25 @@ namespace StoreEngine\Addons\Email\Traits {
         {
         }
         private function get_settings($action_name)
+        {
+        }
+        /**
+         * Append a Reply-To header pointing to the customer for admin-targeted
+         * order emails. Without this, when multiple customers place orders the
+         * site admin gets a stream of notifications all From the same site
+         * address — hitting Reply goes to the site itself, not the customer who
+         * actually placed the order, which is rarely useful.
+         *
+         * Filterable: `storeengine/email/admin_reply_to` receives the formed
+         * header string, the order, and the email_name slug so site owners can
+         * swap in their own routing logic (e.g. a shared support inbox).
+         *
+         * @param array $headers Existing wp_mail headers.
+         * @param \StoreEngine\Classes\Order $order
+         * @return array Headers with Reply-To appended (or unchanged if the
+         *               billing email is missing/invalid).
+         */
+        protected function with_customer_reply_to(array $headers, \StoreEngine\Classes\Order $order): array
         {
         }
         private function get_the_email_body($settings, $template_path): array
@@ -1365,6 +1353,84 @@ namespace StoreEngine\Addons\Email\Traits {
         {
         }
         protected function get_hook_name(string $suffix = null): string
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email\account {
+    class PasswordReset
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'password_reset';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        /**
+         * @param array  $defaults  WP's default [subject, message, headers, attachments].
+         * @param string $key       Reset key (one-time token).
+         * @param string $user_login
+         * @param \WP_User|null $user_data
+         */
+        public function filter_email($defaults, $key, $user_login, $user_data): array
+        {
+        }
+        public function remove_from_filters(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email\Admin {
+    class Settings
+    {
+        public function __construct()
+        {
+        }
+        public function include_settings($settings)
+        {
+        }
+        public static function get_settings_saved_data()
+        {
+        }
+        public static function get_settings_default_data()
+        {
+        }
+        public static function save_settings($form_data = false)
+        {
+        }
+        /**
+         * One-shot upgrade for sites that activated the email addon before
+         * subjects included {order_id}. Without a unique token, Gmail/Outlook
+         * thread every "New order" notification into one conversation in the
+         * admin's inbox.
+         *
+         * We only overwrite if the saved subject *exactly* matches the historic
+         * default — that's the strong signal the admin never customized it.
+         * Anything else is left alone. Idempotent: once flipped to the new
+         * value, future runs no longer match the old default and bail out.
+         *
+         * @param array $settings_data
+         * @return array
+         */
+        protected static function migrate_threading_safe_subjects(array $settings_data): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email {
+    class Ajax
+    {
+        public function __construct()
+        {
+        }
+        private function dispatch_hooks()
         {
         }
     }
@@ -1448,6 +1514,9 @@ namespace StoreEngine\Addons\Email {
     class Hooks
     {
         public function __construct()
+        {
+        }
+        public function boot_deferred_emails(): void
         {
         }
     }
@@ -1568,6 +1637,34 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
     }
+    class PaymentFailed
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'order_payment_failed';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function on_payment_status_changed($order, $new_status, $old_status): void
+        {
+        }
+        protected function send_customer(\StoreEngine\Classes\Order $order): void
+        {
+        }
+        protected function send_admin(\StoreEngine\Classes\Order $order): void
+        {
+        }
+        protected function send(array $settings, string $to, \StoreEngine\Classes\Order $order, bool $is_admin): void
+        {
+        }
+    }
     class Refund
     {
         use \StoreEngine\Addons\Email\Traits\Email {
@@ -1589,6 +1686,88 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
         public function send_mail($order_id, $old_status, $new_status, \StoreEngine\Classes\Order $order)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email\subscription {
+    class Cancelled
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'subscription_cancelled';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function on_status_updated($subscription, $new_status, $old_status): void
+        {
+        }
+    }
+    class Renewed
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'subscription_renewed';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function on_renewal_complete($subscription, $renewal_order): void
+        {
+        }
+    }
+    class TrialEndingSoon
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'trial_ending_soon';
+        const AS_HOOK = 'storeengine/subscription/trial_ending_soon';
+        const AS_GROUP = 'storeengine-subscription';
+        /** Days before trial_end_date to fire the email. Filterable. */
+        const LEAD_DAYS = 3;
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        // ── Scheduling ───────────────────────────────────────────────────────────
+        /**
+         * Wrapper so add_action's default 1-arg accept_args still binds the
+         * subscription cleanly. `checkout_subscription_created` fires with
+         * ($subscription, $order, $recurring_cart) — we only need the first.
+         */
+        public static function on_subscription_created($subscription): void
+        {
+        }
+        public static function schedule_for_subscription($subscription): void
+        {
+        }
+        public static function unschedule_for_subscription($subscription): void
+        {
+        }
+        public static function on_status_updated($subscription, $new_status, $old_status): void
+        {
+        }
+        // ── Send ─────────────────────────────────────────────────────────────────
+        public function send($subscription_id): void
         {
         }
     }
@@ -4549,6 +4728,13 @@ namespace StoreEngine\Addons\Paypal {
         {
         }
         /**
+         * Pay-order variant: persist the PayPal order id on the existing order
+         * being re-paid instead of guessing via the most-recent draft.
+         */
+        public static function remap_react_payment_payload_for_pay_order(array $payment_data, \StoreEngine\Classes\Order $order)
+        {
+        }
+        /**
          * Expose PayPal config to the shared client adapter (React Quick Checkout
          * + future legacy migration). Same data as gateway_javascript_params plus
          * the currency Buttons needs.
@@ -4832,6 +5018,13 @@ namespace StoreEngine\Addons\Razorpay {
          * $order->get_meta('_razorpay_payment_id')) can verify + capture it.
          */
         public static function remap_react_payment_payload(array $payment_data)
+        {
+        }
+        /**
+         * Pay-order variant: persist the Razorpay payment id on the existing
+         * order being re-paid instead of guessing via the most-recent draft.
+         */
+        public static function remap_react_payment_payload_for_pay_order(array $payment_data, \StoreEngine\Classes\Order $order)
         {
         }
         /**
@@ -6032,6 +6225,14 @@ namespace StoreEngine\Addons\Stripe {
          * gateway looks for, and persist as order meta (preferred lookup).
          */
         public static function remap_react_payment_payload(array $payment_data)
+        {
+        }
+        /**
+         * Pay-order variant of the React-payload remap. The order already exists
+         * (re-paying a failed/pending order), so persist the intent id on it
+         * directly rather than scanning for a draft.
+         */
+        public static function remap_react_payment_payload_for_pay_order(array $payment_data, \StoreEngine\Classes\Order $order)
         {
         }
         public static function gateway_javascript_params($payment_method)
@@ -15462,9 +15663,22 @@ namespace StoreEngine {
          * @param ?array $args Filter to a hook with matching args that will be passed to the job when it runs.
          * @param string $group Filter to only actions assigned to a specific group.
          *
-         * @return \StoreEngine\Classes\StoreengineDatetime|null The date and time for the next occurrence, or null if there is no pending, scheduled action for the given hook.
+         * @return \StoreEngine\Classes\StoreengineDatetime|null The date and time for the next occurrence, or null if there is no pending or running scheduled action for the given hook.
          */
         public function get_next(string $hook, ?array $args = null, string $group = ''): ?\StoreEngine\Classes\StoreengineDatetime
+        {
+        }
+        /**
+         * Check whether a matching action is currently pending or in-progress.
+         *
+         * Prefer this over get_next() when you only need a yes/no answer — it's cheaper and
+         * does not require the buggy boolean/timestamp conversion in get_next().
+         *
+         * @param string $hook  The hook that the job will trigger.
+         * @param ?array $args  Filter to a hook with matching args. Null matches any args.
+         * @param string $group Filter to only actions assigned to a specific group.
+         */
+        public function has_scheduled(string $hook, ?array $args = null, string $group = ''): bool
         {
         }
         /**
@@ -16002,27 +16216,6 @@ namespace StoreEngine\Ajax {
         {
         }
         public function get_order(array $payload)
-        {
-        }
-        /**
-         * @param \StoreEngine\Classes\Order $order
-         * @param \StoreEngine\Classes\Cart $cart
-         *
-         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
-         */
-        public static function add_product(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
-        {
-        }
-        public static function add_fee(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
-        {
-        }
-        public static function add_tax(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
-        {
-        }
-        public static function add_shipping(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
-        {
-        }
-        public static function apply_coupon(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
         {
         }
         protected function create_or_update_customer(\StoreEngine\Classes\Order $order)
@@ -16589,10 +16782,17 @@ namespace StoreEngine\API {
         {
         }
         /**
-         * Generalised payment-intent creation. Resolves the gateway from the URL
-         * segment, ensures we have a draft order, and calls the gateway's
-         * GatewayAdapterInterface::create_intent() (or a soft fallback if the
-         * gateway hasn't been migrated yet).
+         * Generalised payment-intent creation. Two flows:
+         *
+         *   1. New checkout — no `order_id` in payload. Requires a non-empty cart;
+         *      resolves/creates a draft order and snapshots the cart onto it.
+         *   2. Pay-for-existing-order — caller passes `order_id` (and is
+         *      authorised to pay it). The existing order is used as-is, no cart
+         *      sync, no draft creation. Drives the frontend-dashboard "Pay Order"
+         *      flow for failed / scheduled / installment orders.
+         *
+         * Either way, the gateway's GatewayAdapterInterface::create_intent() (or
+         * a soft fallback filter) builds the actual client-side intent.
          */
         public function create_payment_intent(\WP_REST_Request $request)
         {
@@ -17290,7 +17490,54 @@ namespace StoreEngine\API {
         public function register_routes()
         {
         }
+        /**
+         * Block registration entirely when WP's "Anyone can register" toggle is off.
+         * Matches the gate `wp_registration_url()` and our login template already
+         * respect, so the REST surface can't quietly bypass site policy.
+         */
+        public function registration_open()
+        {
+        }
         public function login(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Create a customer account. Mirrors the auto-create-on-checkout flow at
+         * CheckoutService::create_customer() so usernames are derived the same way
+         * (email-local-part + dedupe counter) and the same `customer_created`
+         * action fires — which the NewUserNotification email already listens to.
+         *
+         * `auto_login` defaults true. Setting it false is the explicit opt-out for
+         * back-office workflows that create accounts on behalf of someone else.
+         */
+        public function register(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Step 1 of password reset: send the branded email.
+         *
+         * Always returns the same generic response whether or not the email
+         * matches a real account — leaking existence here is the classic
+         * enumeration mistake the form-post handler also takes care to avoid.
+         */
+        public function forgot_password(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Step 2 of password reset: validate the {key, login} from the email link
+         * and apply the new password. `reset_password()` fires the standard WP
+         * `password_reset` action so any integrations stay informed.
+         */
+        public function reset_password(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Build a unique username from an email's local part, dedup'ing with a
+         * numeric suffix if needed. Same algorithm as
+         * CheckoutService::create_customer() so the two registration paths produce
+         * identical usernames for the same email.
+         */
+        protected function derive_unique_username(string $email): string
         {
         }
     }
@@ -19815,6 +20062,26 @@ namespace StoreEngine\Classes {
         public static function prepare_checkout_response(\StoreEngine\Classes\Order $order, array $result): array
         {
         }
+        /**
+         * Snapshot cart line items onto the order as OrderItemProduct rows.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException When a referenced price/variation can't be resolved.
+         */
+        public static function add_product(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
+        public static function add_fee(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
+        public static function add_tax(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
+        public static function add_shipping(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
+        public static function apply_coupon(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
     }
     class Countries
     {
@@ -20437,7 +20704,7 @@ namespace StoreEngine\Classes {
         {
         }
         /**
-         * @see Checkout::update_checkout()
+         * @see CheckoutService::update_checkout()
          */
         public function get_billing_postal_code(): ?string
         {
@@ -28477,6 +28744,38 @@ namespace StoreEngine\Post {
         {
         }
     }
+    class ForgotPassword extends \StoreEngine\Classes\AbstractPostHandler
+    {
+        public function __construct()
+        {
+        }
+        /**
+         * Step 1: visitor enters email, we ask WP to send the reset email.
+         *
+         * We always redirect to the same success state regardless of whether
+         * the email matches a real account — leaking existence here is the
+         * classic account-enumeration mistake.
+         */
+        public function request_reset(array $payload)
+        {
+        }
+        /**
+         * Step 2: visitor returns via the email link with a {key, login} pair,
+         * picks a new password, submits.
+         */
+        public function set_password(array $payload)
+        {
+        }
+    }
+    class Register extends \StoreEngine\Classes\AbstractPostHandler
+    {
+        public function __construct()
+        {
+        }
+        public function register(array $payload)
+        {
+        }
+    }
 }
 namespace StoreEngine {
     class Schedule
@@ -33491,6 +33790,12 @@ namespace {
     {
     }
     function storeengine_frontend_dashboard_edit_account_content()
+    {
+    }
+    function storeengine_frontend_dashboard_forgot_password_content()
+    {
+    }
+    function storeengine_frontend_dashboard_register_content()
     {
     }
     function storeengine_archive_product_header()
