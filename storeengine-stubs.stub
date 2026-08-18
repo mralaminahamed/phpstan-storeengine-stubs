@@ -1045,6 +1045,27 @@ namespace StoreEngine\Addons\Ai\Classes {
         {
         }
     }
+    class TermGenerator
+    {
+        /**
+         * Generate a description for a taxonomy term.
+         *
+         * @param string $taxonomy  The WP taxonomy slug (e.g. storeengine_product_category).
+         * @param string $name      The term name/title to write copy for.
+         * @param array  $opts      { tone?:string, language?:string }
+         *
+         * @return string|\WP_Error
+         */
+        public static function generate(string $taxonomy, string $name, array $opts = [])
+        {
+        }
+        protected static function taxonomy_label(string $taxonomy): string
+        {
+        }
+        protected static function tone_phrase(string $tone): string
+        {
+        }
+    }
 }
 namespace StoreEngine\Addons\Ai {
     class Hooks
@@ -1126,6 +1147,22 @@ namespace StoreEngine\Addons\Ai\Rest {
         {
         }
         public static function get_status(): \WP_REST_Response
+        {
+        }
+    }
+    final class RestTerm
+    {
+        const NS = 'storeengine/v1';
+        public static function init(): void
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        public static function generate(\WP_REST_Request $request)
         {
         }
     }
@@ -1758,6 +1795,33 @@ namespace StoreEngine\Addons\Email\account {
         {
         }
     }
+    class RegistrationWelcome
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'registration_welcome';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        /**
+         * @param array   $email     WP's default [to, subject, message, headers].
+         * @param \WP_User $user      The newly-registered user.
+         * @param string  $blogname
+         */
+        public function filter_email($email, $user, $blogname): array
+        {
+        }
+        public function remove_from_filters(): void
+        {
+        }
+    }
 }
 namespace StoreEngine\Addons\Email\Admin {
     class Settings
@@ -1772,6 +1836,19 @@ namespace StoreEngine\Addons\Email\Admin {
         {
         }
         public static function get_settings_default_data()
+        {
+        }
+        /**
+         * Seed an empty `email_content_tree` default wherever an `email_content`
+         * default exists. Keeps the block-editor tree key present through the
+         * deep-merge in {@see self::save_settings()} and returned by
+         * {@see HelperAddon::get_setting()}. Mirrors the fields whitelist injection
+         * in the AJAX handler.
+         *
+         * @param array $data Default settings data.
+         * @return array
+         */
+        protected static function inject_content_tree_defaults(array $data): array
         {
         }
         public static function save_settings($form_data = false)
@@ -1802,6 +1879,87 @@ namespace StoreEngine\Addons\Email\Admin {
          * @return array
          */
         protected static function migrate_threading_safe_subjects(array $settings_data): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email\affiliate {
+    abstract class AbstractAffiliateMail
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        public function __construct()
+        {
+        }
+        /**
+         * Wire the addon action(s) that fire this email.
+         */
+        abstract protected function register_hooks(): void;
+        /**
+         * Default settings tree for this email (subject/heading/content under a
+         * 'customer' sub-key, matching every other StoreEngine email).
+         */
+        abstract public static function default_template(): array;
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        /**
+         * Tokens shared by every affiliate email.
+         *
+         * @param string $name  Affiliate display name.
+         * @param string $email Affiliate email.
+         */
+        protected function base_replacements(string $name, string $email): array
+        {
+        }
+        /**
+         * Render (HTML or plain text) and send a non-order email.
+         *
+         * @param array  $settings      The 'customer' settings row (subject/heading/content).
+         * @param string $to            Recipient email.
+         * @param array  $replacements  Token => value map applied to subject + body.
+         */
+        protected function dispatch(array $settings, string $to, array $replacements): void
+        {
+        }
+    }
+    class Approved extends \StoreEngine\Addons\Email\affiliate\AbstractAffiliateMail
+    {
+        const SETTINGS_KEY = 'affiliate_approved';
+        protected function register_hooks(): void
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function send_mail($affiliate_id, $status): void
+        {
+        }
+    }
+    class PayoutCompleted extends \StoreEngine\Addons\Email\affiliate\AbstractAffiliateMail
+    {
+        const SETTINGS_KEY = 'affiliate_payout_completed';
+        protected function register_hooks(): void
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function send_mail($payout_id, $status): void
+        {
+        }
+    }
+    class Registered extends \StoreEngine\Addons\Email\affiliate\AbstractAffiliateMail
+    {
+        const SETTINGS_KEY = 'affiliate_registered';
+        protected function register_hooks(): void
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function send_mail($affiliate_id): void
         {
         }
     }
@@ -1853,6 +2011,21 @@ namespace StoreEngine\Addons\Email\Ajax {
     {
         protected string $namespace = STOREENGINE_PLUGIN_SLUG . '_email';
         public function __construct()
+        {
+        }
+        /**
+         * Whitelist a `email_content_tree` sibling wherever `email_content` is
+         * allowed, so the block editor's tree (base64url JSON) round-trips on save.
+         *
+         * Applied to the fully-filtered schema (base + invoice + any addon-registered
+         * emails), so every present and future email type gets the tree key without
+         * editing each entry. `string` runs through sanitize_text_field, which leaves
+         * base64url (A-Za-z0-9-_) untouched.
+         *
+         * @param array $fields Sanitizer schema.
+         * @return array
+         */
+        private static function inject_content_tree(array $fields): array
         {
         }
         public function get_email_settings()
@@ -2023,12 +2196,52 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
     }
+    class Cancelled
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'order_cancelled';
+        /**
+         * Both spellings exist in Constants (ORDER_STATUS_CANCELED = 'canceled' and
+         * ORDER_STATUS_CANCELLED = 'cancelled'); match either so the email fires
+         * regardless of which the transition used.
+         */
+        const CANCELLED_STATUSES = ['cancelled', 'canceled'];
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        public function send_mail($order_id, $old_status, $new_status, \StoreEngine\Classes\Order $order)
+        {
+        }
+    }
     class Confirm
     {
         use \StoreEngine\Addons\Email\Traits\Email {
             \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
         }
         public function __construct()
+        {
+        }
+        /**
+         * Admin + customer emails can involve a slow SMTP handshake. Sending them
+         * inline here added that latency to the synchronous checkout/place-order
+         * request the customer's browser is waiting on — a contributor to gateways
+         * (e.g. Razorpay) occasionally surfacing an upstream-timeout error even
+         * though the order/payment already succeeded. Defer via Action Scheduler
+         * (already bundled/used elsewhere, e.g. the webhooks addon) so the
+         * checkout response returns immediately.
+         */
+        public function schedule_order_email(\StoreEngine\Classes\Order $order): void
+        {
+        }
+        public function send_order_email_by_id(int $order_id): void
         {
         }
         public function send_order_email(\StoreEngine\Classes\Order $order)
@@ -2038,6 +2251,32 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
         private function send_customer_mail(\StoreEngine\Classes\Order $order, array $settings)
+        {
+        }
+    }
+    class Delivered
+    {
+        use \StoreEngine\Addons\Email\Traits\Email {
+            \StoreEngine\Addons\Email\Traits\Email::__construct as private __EmailConstruct;
+        }
+        const SETTINGS_KEY = 'order_delivered';
+        public function __construct()
+        {
+        }
+        public static function register_defaults(array $defaults): array
+        {
+        }
+        public static function default_template(): array
+        {
+        }
+        /**
+         * @param int    $order_id
+         * @param int    $order_item_id
+         * @param int    $product_id
+         * @param array  $shipment   courier/tracking_number/tracking_url/…
+         * @param string $new_status
+         */
+        public function on_item_shipped($order_id, $order_item_id, $product_id, $shipment, $new_status): void
         {
         }
     }
@@ -3313,6 +3552,508 @@ namespace StoreEngine\Addons\EuVat {
         }
     }
 }
+namespace StoreEngine\Addons\FunnelBuilder {
+    class Api
+    {
+        public static function init()
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\FunnelBuilder\Api {
+    class AnalyticsController
+    {
+        protected string $namespace = 'storeengine/v1';
+        public function register_routes()
+        {
+        }
+        public function permission(): bool
+        {
+        }
+        public function get_stats(\WP_REST_Request $request)
+        {
+        }
+    }
+    class FunnelsController
+    {
+        protected string $namespace = 'storeengine/v1';
+        protected string $rest_base = 'funnels';
+        public function register_routes()
+        {
+        }
+        public function permission(): bool
+        {
+        }
+        protected function item_args(): array
+        {
+        }
+        public function get_items(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        public function get_item(\WP_REST_Request $request)
+        {
+        }
+        public function create_item(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        public function update_item(\WP_REST_Request $request)
+        {
+        }
+        public function delete_item(\WP_REST_Request $request)
+        {
+        }
+        protected function fill(\StoreEngine\Addons\FunnelBuilder\Classes\Funnel $funnel, \WP_REST_Request $request): \StoreEngine\Addons\FunnelBuilder\Classes\Funnel
+        {
+        }
+    }
+    class StepsController
+    {
+        protected string $namespace = 'storeengine/v1';
+        public function register_routes()
+        {
+        }
+        /**
+         * Restore a trashed step page, or create a fresh one for a detached/deleted step.
+         */
+        public function page_action(\WP_REST_Request $request)
+        {
+        }
+        public function permission(): bool
+        {
+        }
+        public function get_items(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+        public function create_item(\WP_REST_Request $request)
+        {
+        }
+        public function update_item(\WP_REST_Request $request)
+        {
+        }
+        public function delete_item(\WP_REST_Request $request)
+        {
+        }
+        public function reorder(\WP_REST_Request $request): \WP_REST_Response
+        {
+        }
+    }
+    class StoreCheckoutController
+    {
+        protected string $namespace = 'storeengine/v1';
+        public function register_routes()
+        {
+        }
+        public function permission(): bool
+        {
+        }
+        public function get_store_checkout(): \WP_REST_Response
+        {
+        }
+        /**
+         * Return the store-checkout funnel, creating + seeding it if it doesn't
+         * exist yet (idempotent — safe to POST repeatedly).
+         */
+        public function ensure_store_checkout(): \WP_REST_Response
+        {
+        }
+        protected function find(): ?\StoreEngine\Addons\FunnelBuilder\Classes\Funnel
+        {
+        }
+        protected function seed_step(int $funnel_id, string $type, string $name, int $order): void
+        {
+        }
+        protected function with_steps(\StoreEngine\Addons\FunnelBuilder\Classes\Funnel $funnel): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\FunnelBuilder\Classes {
+    class FunnelStats
+    {
+        const EVENTS = ['view', 'optin', 'purchase', 'upsell_accepted', 'upsell_rejected', 'skipped'];
+        public static function record(int $funnel_id, ?int $step_id, string $event, array $args = []): void
+        {
+        }
+        /**
+         * A stable-per-visitor id used to thread views → conversions. Cookie based,
+         * falls back to a transient-free random token when cookies are unavailable.
+         */
+        public static function session_id(): string
+        {
+        }
+        /**
+         * Per-step roll-up for a funnel: views, conversions and revenue. Optional
+         * date range via $args['from'] / $args['to'] (Y-m-d).
+         */
+        public static function summary(int $funnel_id, array $args = []): array
+        {
+        }
+    }
+    class FunnelStep
+    {
+        /**
+         * Base (free) step types. Pro reuses these — upsell/downsell behaviour is
+         * gated by the Pro addon, but the type lives in the shared schema.
+         */
+        const TYPES = ['landing', 'optin', 'checkout', 'upsell', 'downsell', 'thankyou'];
+        public int $id = 0;
+        public int $funnel_id = 0;
+        public ?int $page_id = null;
+        public string $type = 'landing';
+        public string $name = '';
+        public int $step_order = 0;
+        public ?string $ab_variant_group = null;
+        public array $settings = [];
+        public ?string $created_at = null;
+        public ?string $updated_at = null;
+        public function __construct(array $data = [])
+        {
+        }
+        protected function populate(array $row): void
+        {
+        }
+        protected static function decode($value): array
+        {
+        }
+        public static function find(int $id): ?self
+        {
+        }
+        /**
+         * @return self[]
+         */
+        public static function for_funnel(int $funnel_id): array
+        {
+        }
+        public static function find_by_page(int $page_id): ?self
+        {
+        }
+        public static function next_order(int $funnel_id): int
+        {
+        }
+        public function save(): int
+        {
+        }
+        public function delete(): bool
+        {
+        }
+        /**
+         * The next step after this one in the funnel order (used for routing /
+         * upsell-skip). Returns null at the end of the funnel.
+         */
+        public function next(): ?self
+        {
+        }
+        public function get_url(): string
+        {
+        }
+        /**
+         * State of the WP page backing this step: publish | draft | trashed | missing.
+         * `missing` means no page_id, or the page was permanently deleted.
+         */
+        public function page_status(): string
+        {
+        }
+        /**
+         * A step is renderable only when its page exists and is published.
+         */
+        public function is_page_live(): bool
+        {
+        }
+        public function to_array(): array
+        {
+        }
+    }
+    class Funnel
+    {
+        public int $id = 0;
+        public string $name = '';
+        public string $slug = '';
+        public string $status = 'draft';
+        public string $type = 'sales';
+        public string $trigger_type = 'manual';
+        public array $trigger_data = [];
+        public array $settings = [];
+        public ?string $created_at = null;
+        public ?string $updated_at = null;
+        public function __construct(array $data = [])
+        {
+        }
+        protected function populate(array $row): void
+        {
+        }
+        protected static function decode($value): array
+        {
+        }
+        public static function find(int $id): ?self
+        {
+        }
+        public static function find_by_slug(string $slug): ?self
+        {
+        }
+        /**
+         * @return self[]
+         */
+        public static function all(array $args = []): array
+        {
+        }
+        /**
+         * The published funnel currently bound to the global checkout flow, if any.
+         */
+        public static function get_global_checkout_funnel(): ?self
+        {
+        }
+        /**
+         * The published product-trigger funnel targeting any of the given product or
+         * price ids, if one exists. trigger_data carries { products: [], prices: [] }.
+         */
+        public static function find_for_product(array $product_ids = [], array $price_ids = []): ?self
+        {
+        }
+        public function save(): int
+        {
+        }
+        public function delete(): bool
+        {
+        }
+        protected static function unique_slug(string $slug): string
+        {
+        }
+        /**
+         * @return FunnelStep[]
+         */
+        public function steps(): array
+        {
+        }
+        public function to_array(): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\FunnelBuilder {
+    class Database
+    {
+        const PAGE_META_FUNNEL = '_storeengine_funnel_id';
+        const PAGE_META_STEP = '_storeengine_funnel_step_id';
+        public static function init()
+        {
+        }
+        /**
+         * Detach a step from its page when the page is permanently deleted.
+         */
+        public function detach_deleted_page($post_id)
+        {
+        }
+        public function register_page_meta()
+        {
+        }
+        /**
+         * Create (or reuse) the WP page that backs a funnel step. Built as a normal
+         * page so it opens in the block editor with aBlocks available.
+         */
+        public static function create_step_page(int $funnel_id, string $title, string $type = 'landing'): int
+        {
+        }
+        /**
+         * Minimal starter block content per step type, using the funnel shortcodes
+         * so a freshly created step is functional before the merchant designs it in
+         * aBlocks.
+         */
+        protected static function starter_content(string $type): string
+        {
+        }
+    }
+    class Frontend
+    {
+        protected static ?\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep $current_step = null;
+        protected static bool $resolved = false;
+        public static function init()
+        {
+        }
+        /**
+         * Resolve the funnel step backing the current request (a step page), if any.
+         */
+        public static function current_step(): ?\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep
+        {
+        }
+        /**
+         * Resolve the post id backing the current render — frontend singular page,
+         * block-editor ServerSideRender/REST, or the classic edit screen.
+         */
+        protected static function resolve_page_id(): int
+        {
+        }
+        /**
+         * Are we rendering a block-editor preview? aBlocks dynamic blocks pass
+         * ?context=edit to the block-renderer; used to show sample output instead of
+         * a blank block when there's no live funnel/step context.
+         */
+        protected static function is_preview(): bool
+        {
+        }
+        /**
+         * A funnel button anchor (accept / skip / next-step).
+         */
+        protected function button_html(string $modifier, string $label, string $url, int $step_id = 0): string
+        {
+        }
+        public function track_view()
+        {
+        }
+        /**
+         * The URL of the next step (or the configured fallback). Used by the
+         * accept/skip buttons and by Pro after a one-click charge.
+         */
+        public static function next_step_url(\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep $step): string
+        {
+        }
+        /**
+         * Checkout step — delegate to StoreEngine's checkout shortcode and stamp the
+         * funnel context so a completed order can be attributed (Hooks::track_purchase)
+         * and so Pro knows which funnel/step to upsell from.
+         */
+        public function sc_checkout($atts): string
+        {
+        }
+        /**
+         * Offer summary for an upsell/downsell step. Free renders a basic offer block
+         * from the step settings; Pro filters in the full one-click offer UI.
+         */
+        public function sc_offer($atts): string
+        {
+        }
+        /**
+         * Accept button. Free routes to the next step; Pro intercepts the
+         * `accept_url` to charge the saved payment method first.
+         */
+        public function sc_accept($atts): string
+        {
+        }
+        /**
+         * Skip/decline button — always routes to the next step.
+         */
+        public function sc_skip($atts): string
+        {
+        }
+        /**
+         * Generic step-navigation button — advances the funnel from any step type
+         * (landing / opt-in / thank-you). Defaults to the next step in sequence; pass
+         * `step="<id>"` to jump to a specific step, or `url="…"` for a custom target.
+         *
+         * Usage: [storeengine_funnel_next_step label="Continue"]
+         *        [storeengine_funnel_next_step step="42" label="Get the deal"]
+         */
+        public function sc_next_step($atts): string
+        {
+        }
+        /**
+         * Stash the active funnel/step on the StoreEngine cart/session so the order
+         * created at checkout carries the attribution meta. Uses order/session meta
+         * via the checkout hook downstream; here we keep it on a cookie as a
+         * lightweight, gateway-agnostic carrier.
+         */
+        protected function remember_context(\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep $step): void
+        {
+        }
+    }
+    final class FunnelBuilder extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'funnel-builder';
+        const DB_VERSION = '1.0.0';
+        public function define_constants()
+        {
+        }
+        /**
+         * The free addon owns every table the funnel builder needs. Bump DB_VERSION
+         * whenever the schema in Installer changes so the central manager
+         * (\StoreEngine\Addons::sync_schema_for) reruns install_tables().
+         */
+        public function get_db_version(): string
+        {
+        }
+        public function install_tables(): void
+        {
+        }
+        public function addon_activation_hook()
+        {
+        }
+        public function init_addon()
+        {
+        }
+    }
+    class Hooks
+    {
+        const MENU_SLUG = 'storeengine-funnels';
+        public static function init()
+        {
+        }
+        /**
+         * Adds the "Funnels" item to the StoreEngine admin sidebar. Core registers
+         * the matching submenu page and the SPA renders whatever the
+         * `storeengine.admin.pages` JS filter maps the slug to (see assets/admin.js).
+         */
+        public function register_menu(array $menu): array
+        {
+        }
+        /**
+         * Surfaces the single Funnel Builder card on the Add-ons screen. Toggling it
+         * writes `storeengine_addons['funnel-builder']`, which activates BOTH the
+         * free and the (same-slug) Pro addon at once.
+         */
+        public function register_addon_card(array $cards): array
+        {
+        }
+        /**
+         * When an order is placed through a funnel, log the purchase against its
+         * checkout step. The funnel id is stashed on the session/order by the
+         * frontend router (Frontend::class).
+         */
+        public function track_purchase($order, $payload = null)
+        {
+        }
+    }
+    class Installer
+    {
+        public static function funnels_table(): string
+        {
+        }
+        public static function steps_table(): string
+        {
+        }
+        public static function stats_table(): string
+        {
+        }
+        public static function install_tables(): void
+        {
+        }
+        public static function drop_tables(): void
+        {
+        }
+    }
+    class StoreCheckout
+    {
+        protected static ?\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep $checkout_step = null;
+        protected static bool $resolved = false;
+        public static function init()
+        {
+        }
+        /**
+         * The checkout step of the published Store Checkout funnel, or null.
+         */
+        public static function checkout_step(): ?\StoreEngine\Addons\FunnelBuilder\Classes\FunnelStep
+        {
+        }
+        public function override_checkout_url($url)
+        {
+        }
+        public function override_checkout_permalink($permalink, $page, $page_id, $fallback)
+        {
+        }
+        public function mark_is_checkout($is_checkout)
+        {
+        }
+    }
+}
 namespace StoreEngine\Addons\Gdpr {
     class Erasers
     {
@@ -4463,7 +5204,7 @@ namespace StoreEngine\Addons\Membership {
         public function set_user_meta_data($meta_id, $object_id, $meta_key, $meta_value)
         {
         }
-        public function remove_non_membership_user_meta_data($non_membership_user_ids = [])
+        public function remove_non_membership_user_meta_data($non_membership_user_ids = [], $object_id = '')
         {
         }
         public function add_membership_user_meta_data($object_id = '', $membership_user_ids = [])
@@ -5462,7 +6203,13 @@ namespace StoreEngine\Addons\MultiVendor\Api {
      *   POST   /storeengine/v1/vendors/{user_id}/approve
      *   POST   /storeengine/v1/vendors/{user_id}/suspend
      *
-     * All gated by `manage_storeengine_vendor` (granted to admins).
+     * This is the ADMIN vendor-management controller — it acts on arbitrary
+     * vendor accounts (approve/suspend/CRUD/assign products). It must therefore
+     * require a real administrator capability, NOT `manage_storeengine_vendor`:
+     * that cap is also granted to the `storeengine_vendor` role for vendor
+     * self-service (dashboard/settings/withdrawals), so gating these endpoints on
+     * it let a self-registered pending vendor approve their own account and manage
+     * every other vendor. Vendor self-service controllers keep their own gate.
      */
     class Vendors
     {
@@ -5517,7 +6264,18 @@ namespace StoreEngine\Addons\MultiVendor\Api {
         public function unassign_products(\WP_REST_Request $request)
         {
         }
-        protected function shape(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor): array
+        protected function shape(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor, ?int $product_count = null): array
+        {
+        }
+        /**
+         * Count each vendor's products (by `post_author`) in one grouped query.
+         * Excludes trashed / auto-draft / revision rows so the number matches what
+         * the vendor actually manages.
+         *
+         * @param int[] $user_ids
+         * @return array<int,int> Map of user_id => product count (only non-zero rows present).
+         */
+        protected function product_counts_for(array $user_ids): array
         {
         }
     }
@@ -5612,6 +6370,7 @@ namespace StoreEngine\Addons\MultiVendor\Classes {
         protected ?string $date_approved = null;
         protected bool $is_visible = true;
         protected bool $is_default = false;
+        protected bool $auto_approve_products = false;
         protected array $badges = [];
         protected string $payment_method = 'paypal';
         protected array $payment_data = [];
@@ -5690,6 +6449,12 @@ namespace StoreEngine\Addons\MultiVendor\Classes {
         {
         }
         public function set_is_default(bool $value)
+        {
+        }
+        public function get_auto_approve_products(): bool
+        {
+        }
+        public function set_auto_approve_products(bool $value)
         {
         }
         public function get_badges(): array
@@ -6354,7 +7119,9 @@ namespace StoreEngine\Addons\Paddle {
      *
      * Authoritative source of truth is always a fresh API read of the transaction
      * (PaddleService::get_transaction) — the raw webhook body is never trusted to
-     * decide paid status; the optional signing-secret check is defence-in-depth.
+     * decide paid status, resolve the order, or read the customer email. On top of
+     * that, a valid Paddle-Signature HMAC is mandatory: a store with no signing
+     * secret configured for the active mode rejects webhooks outright.
      */
     class API
     {
@@ -6388,16 +7155,20 @@ namespace StoreEngine\Addons\Paddle {
          * Fallback order resolution: find a StoreEngine order by the Paddle
          * customer's email when the transaction carries no usable merchant_order_id.
          *
+         * The email is resolved from the AUTHORITATIVE (server-fetched) transaction's
+         * customer id via the Paddle API — never from the webhook body — so a spoofed
+         * body email can't point the match at someone else's order.
+         *
          * Safety: returns an order ONLY when EXACTLY ONE unpaid Paddle order matches
          * the email. Zero or multiple matches log and return null, so an ambiguous
          * email can never auto-complete the wrong order.
          *
-         * @param object $data           Paddle transaction payload.
+         * @param object $transaction    Authoritative Paddle transaction (->customer_id).
          * @param string $transaction_id For log context.
          *
          * @return \StoreEngine\Classes\Order|null
          */
-        protected function resolve_order_by_email($data, string $transaction_id)
+        protected function resolve_order_by_email($transaction, string $transaction_id)
         {
         }
         /**
@@ -6753,6 +7524,21 @@ namespace StoreEngine\Payment\Gateways {
          * @return string transaction URL, or empty string.
          */
         public function get_transaction_url($order): string
+        {
+        }
+        /**
+         * Query vars (e.g. `order_pay`) are only readable once the main `$wp_query`
+         * has been set up. Gateways can be booted very early — e.g. addon toggle /
+         * settings AJAX handlers instantiate every gateway during `plugins_loaded`,
+         * long before WordPress creates `$wp_query` — so calling `get_query_var()`
+         * there fatals with "Call to a member function get() on null".
+         *
+         * @param string $var
+         * @param mixed  $default
+         *
+         * @return mixed
+         */
+        protected function get_query_var_safe(string $var, $default = '')
         {
         }
         /**
@@ -7353,6 +8139,12 @@ namespace StoreEngine\Addons\Paddle {
          *
          * Has NO billing_cycle, so Paddle charges it only on the first transaction
          * (alongside the recurring item) and never on renewals.
+         *
+         * The setup fee is NOT folded into the recurring line's per-unit price — the
+         * cart keeps `line_subtotal` as the clean recurring amount and surfaces the
+         * fee only in the aggregate cart total. So this line ADDS the fee once; it
+         * is not compensating for anything baked into the recurring line.
+         * Subscriptions are always quantity 1, so the fee is charged once.
          *
          * @return array
          */
@@ -8902,9 +9694,6 @@ namespace StoreEngine\Addons\Seo\Output {
         protected static function canonical(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
         {
         }
-        protected static function robots(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
-        {
-        }
         protected static function open_graph(\StoreEngine\Addons\Seo\Engine\SeoData $data): void
         {
         }
@@ -10066,6 +10855,21 @@ namespace StoreEngine\Addons\Stripe {
          * @throws \StoreEngine\Classes\Exceptions\StoreEngineInvalidOrderStatusTransitionException
          */
         public function process_payment(\StoreEngine\Classes\Order $order)
+        {
+        }
+        /**
+         * Ensure a selected saved payment token belongs to the person legitimately
+         * driving this checkout before it is used to charge a card off-session.
+         *
+         * PaymentTokens::get_token() is an unscoped primary-key lookup, so without
+         * this guard a logged-in customer could pass another customer's token id and
+         * charge that customer's saved card (IDOR). The token is accepted only when
+         * it belongs to the current user or to the order's customer (the latter
+         * covers admin / order-pay flows acting on a customer's behalf).
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException When the token is not owned by the caller.
+         */
+        protected function assert_token_ownership(\StoreEngine\Classes\PaymentTokens\PaymentToken $token, \StoreEngine\Classes\Order $order): void
         {
         }
         /**
@@ -12528,7 +13332,7 @@ namespace StoreEngine\Classes {
             'cart_hash' => '',
             'new_order_email_sent' => 0,
             'order_key' => '',
-            'order_stock_reduced' => 1,
+            'order_stock_reduced' => 0,
             'date_paid_gmt' => null,
             'date_completed_gmt' => null,
             'shipping_tax_amount' => 0.0,
@@ -16748,6 +17552,31 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
         /**
+         * Build the one-time invoice-item line for a subscription's setup/signup fee.
+         *
+         * Native Stripe subscriptions bill the CLEAN recurring price — the setup fee
+         * is stripped from the recurring cart (Subscription\Hooks::
+         * set_subscription_prices_for_calculation() returns 0 for the fee under the
+         * `recurring_total` calculation), so it never rides along on the recurring
+         * amount. Unlike order-total gateways (Razorpay/PayPal), that means the fee
+         * is NEVER collected unless we add it explicitly to the subscription's first
+         * invoice via `add_invoice_items`. This builds that line.
+         *
+         * The fee is stored per-unit, so it's charged `quantity` times to match the
+         * order subtotal the customer saw at checkout (the same rule the Paddle
+         * adapter follows). Returns null when there's no fee to bill.
+         *
+         * @param bool   $has_setup_fee   Whether the line item carries a setup fee.
+         * @param float  $setup_fee_price Per-unit setup fee amount.
+         * @param string $setup_fee_name  Display name (falls back to "Setup Fee").
+         * @param int    $quantity        Line quantity.
+         *
+         * @return array{name:string,amount:float,quantity:int}|null
+         */
+        public static function build_setup_fee_invoice_item(bool $has_setup_fee, float $setup_fee_price, string $setup_fee_name, int $quantity): ?array
+        {
+        }
+        /**
          * Cancel the Stripe subscription when the StoreEngine subscription is
          * cancelled (unless this cancellation originated from a Stripe webhook).
          *
@@ -19091,9 +19920,17 @@ namespace StoreEngine\Addons\Subscription\Events {
         /**
          * Re-apply remembered coupons to a freshly created renewal order.
          *
-         * @param \StoreEngine\Classes\Order $order The renewal order (already saved).
+         * Used as both a filter callback (`renewal_order_created`, which passes the
+         * source subscription) and an action callback (`after_create_renewal_order`,
+         * which passes only the order). It always returns the order so it is safe in
+         * the filter position.
+         *
+         * @param \StoreEngine\Classes\Order              $order        The renewal order (already saved).
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription|null  $subscription Source subscription, when provided.
+         *
+         * @return \StoreEngine\Classes\Order
          */
-        public function apply_to_renewal(\StoreEngine\Classes\Order $order): void
+        public function apply_to_renewal(\StoreEngine\Classes\Order $order, ?\StoreEngine\Addons\Subscription\Classes\Subscription $subscription = null): \StoreEngine\Classes\Order
         {
         }
         /**
@@ -19193,6 +20030,18 @@ namespace StoreEngine\Addons\Subscription {
          */
         private static ?\StoreEngine\Classes\Cart $cached_recurring_cart = null;
         protected function __construct()
+        {
+        }
+        /**
+         * After an account move, disable auto-renewal on the moved subscriptions so the
+         * new owner re-authorizes payment. The saved payment token was moved too, but it
+         * still points at the source user's gateway customer and may fail on renewal.
+         *
+         * @param int   $from   Source user ID.
+         * @param int   $to     Target user ID.
+         * @param array $result Move result summary (contains `subscription_ids`).
+         */
+        public static function flag_moved_subscriptions(int $from, int $to, array $result)
         {
         }
         public static function add_subscription_class($classes): array
@@ -20328,6 +21177,25 @@ namespace StoreEngine\Admin {
         {
         }
         /**
+         * Warn the admin when shipping and/or tax is active but the Postcode field
+         * customers rely on to trigger those calculations isn't collected.
+         *
+         * Both shipping-zone matching ({@see ShippingUtils}) and tax-rate matching
+         * ({@see \StoreEngine\Classes\Tax}) look the rate up by the destination
+         * postcode. If the relevant Postcode checkout field is disabled — or merely
+         * optional, so a shopper can leave it blank — postcode-based rates cannot be
+         * matched and the order silently gets the wrong (or zero) shipping/tax.
+         *
+         * Shipping's own postcode is auto-promoted to required whenever the field is
+         * enabled and shipping is live (see CheckoutFields::all()), so the real gaps
+         * this catches are: (a) the field turned off entirely, and (b) billing-based
+         * tax, where the billing Postcode has no such promotion and can be left
+         * optional.
+         */
+        public static function add_postcode_required_notice()
+        {
+        }
+        /**
          * Warn the admin when shipping is active but customers can't enter the
          * address details needed to calculate it.
          *
@@ -20362,6 +21230,15 @@ namespace StoreEngine\Admin {
         /**
          * Add notice.
          *
+         * Notices are frequently registered while addons boot on `plugins_loaded`,
+         * before WordPress has loaded textdomains. Resolving a translatable string
+         * that early triggers WP 6.7+'s `_load_textdomain_just_in_time` _doing_it_wrong
+         * warning. To register a notice safely from that window, pass a {@see \Closure}
+         * for any translatable field (`message`, `title`, `button_text`, …); the
+         * closure is resolved on `init`, after textdomains are available. Plain-string
+         * callers keep working unchanged — and are still deferred to `init` so the
+         * registration order is consistent.
+         *
          * @param string $notice_name
          * @param array $args {
          *
@@ -20369,9 +21246,9 @@ namespace StoreEngine\Admin {
          * @type string $icon Icon.
          * @type bool $alt Render alt style (wp notice-alt class)
          * @type string|string[] $classes Extra class.
-         * @type string $title Optional Title.
-         * @type string $message The Message.
-         * @type string $button_text Extra button text/label
+         * @type string|\Closure $title Optional Title.
+         * @type string|\Closure $message The Message.
+         * @type string|\Closure $button_text Extra button text/label
          * @type string $button_action Extra button action url
          * @type bool $dismissible Show dismissible button.
          * }
@@ -20379,6 +21256,9 @@ namespace StoreEngine\Admin {
          * @return void
          */
         public static function add_notice(string $notice_name, array $args)
+        {
+        }
+        private static function register_notice(string $notice_name, array $args)
         {
         }
         public static function remove_notice(string $notice_name)
@@ -20867,6 +21747,12 @@ namespace StoreEngine\Ajax {
         public function __construct()
         {
         }
+        public function preview_account_move($payload)
+        {
+        }
+        public function move_account($payload)
+        {
+        }
         public function create_new_customer($payload)
         {
         }
@@ -21011,6 +21897,13 @@ namespace StoreEngine\Ajax {
         protected array $payment_fields;
         protected array $settings_fields;
         public function __construct()
+        {
+        }
+        /**
+         * Rebuild the payment field schema once `init` has fired and translations
+         * are safe to load. See __construct() for why this can't run at construction.
+         */
+        public function refresh_payment_fields(): void
         {
         }
         protected function load_fields()
@@ -21392,6 +22285,19 @@ namespace StoreEngine\API {
          * payment-method block (so available gateways re-render after totals shift).
          */
         public function refresh_fragments()
+        {
+        }
+        /**
+         * Whether the current fragment-refresh request originated from the cart page.
+         *
+         * Keeps Helper::is_cart()/is_checkout() accurate during the context-less REST
+         * refresh so shared fragments (notably the shipping method selector) render in
+         * the right mode. Defaults to checkout context when the referer is missing or
+         * unresolvable, because that is the page that needs the selectable shipping UI.
+         *
+         * @return bool
+         */
+        protected function is_cart_page_request(): bool
         {
         }
         public function clear_cart()
@@ -22350,6 +23256,19 @@ namespace StoreEngine\API {
         public function rest_stock_permission(\WP_REST_Request $request): bool
         {
         }
+        /**
+         * Object-level gate for cross-product code lookups (Barcode Labels resolve).
+         *
+         * The route only checks the broad `edit_storeengine_products` cap, which the
+         * multi-vendor addon grants to EVERY vendor — so on its own it is not a
+         * tenancy boundary. Without this check a vendor could resolve another
+         * seller's product (name / SKU / barcode / price) by guessing a code. Mirror
+         * rest_stock_permission's ownership logic so resolution is scoped to products
+         * the caller may actually edit.
+         */
+        protected function can_resolve_product(int $product_id): bool
+        {
+        }
         public function rest_stock_adjust(\WP_REST_Request $request)
         {
         }
@@ -22771,6 +23690,20 @@ namespace StoreEngine {
         {
         }
         /**
+         * Completed-order data for the thank-you page GA4 `purchase` event.
+         *
+         * Returned under an `order` key inside SEPixelData and consumed by
+         * dev_storeengine/pixel-integrations/google.ts. The shape mirrors the
+         * checkout REST response's `order`, limited to the fields the analytics
+         * integration reads. Building it here (rather than re-running the checkout
+         * response pipeline) avoids re-firing payment-success side effects.
+         *
+         * @return array Either [ 'order' => [...] ] or [] when no valid order.
+         */
+        private function get_thankyou_pixel_data(): array
+        {
+        }
+        /**
          * Enqueue Block Editor Assets
          *
          * @since 1.3.3
@@ -22908,6 +23841,16 @@ namespace StoreEngine\Backup {
          * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
          */
         public static function unzip(string $zip_path, string $dest_dir): void
+        {
+        }
+        /**
+         * Whether a zip entry name is safe to extract under a destination directory.
+         *
+         * Rejects absolute paths (unix `/…`, Windows `C:\…`), parent-directory
+         * traversal (`..`), stream wrappers (`phar://`, `php://`, …) and null bytes —
+         * the building blocks of a Zip Slip escape.
+         */
+        protected static function is_safe_zip_entry(string $name): bool
         {
         }
         /**
@@ -23666,6 +24609,19 @@ namespace StoreEngine\Classes {
         public function set_downloadable_files(array $value)
         {
         }
+        /**
+         * Drop downloadable-file entries whose location contains a path-traversal
+         * segment ("../" / "..\"). URLs and normal uploads-relative paths are kept;
+         * arbitrary absolute reads are additionally blocked at serve time by
+         * DownloadHandler::is_allowed_local_path(). Defence in depth against a
+         * crafted file URL being used to read arbitrary server files.
+         *
+         * @param array $files Downloadable files (keyed by file id/hash).
+         * @return array Sanitised list, original keys preserved.
+         */
+        protected static function sanitize_downloadable_files(array $files): array
+        {
+        }
         public function set_upsell_ids(array $value)
         {
         }
@@ -23750,6 +24706,93 @@ namespace StoreEngine\Classes {
         protected string $table;
         protected string $primary_key = 'id';
         public function __construct()
+        {
+        }
+    }
+    class AccountMover
+    {
+        /**
+         * Source user ID (data is moved FROM here).
+         *
+         * @var int
+         */
+        protected int $from;
+        /**
+         * Target user ID (data is moved TO here).
+         *
+         * @var int
+         */
+        protected int $to;
+        /**
+         * @param int $from Source user ID.
+         * @param int $to   Target user ID.
+         */
+        public function __construct(int $from, int $to)
+        {
+        }
+        /**
+         * Core (free) tables owned by a customer, keyed by the customer column.
+         *
+         * Each entry: table suffix (without $wpdb->prefix) => owner column.
+         * Pro addons register their own tables via the `storeengine/account/moveable_tables`
+         * filter and act on the `storeengine/account/moved` hook.
+         *
+         * NOTE: POS operator tables, vendor/affiliate identities, api_keys and the
+         * session-bound cart are intentionally excluded — they are not customer purchases.
+         *
+         * @return array<string, string>
+         */
+        protected function get_moveable_tables(): array
+        {
+        }
+        /**
+         * Whether a StoreEngine table exists.
+         *
+         * @param string $table Table suffix (without $wpdb->prefix).
+         */
+        protected function table_exists(string $table): bool
+        {
+        }
+        /**
+         * Validate that the move can be performed.
+         *
+         * @return true|\WP_Error
+         */
+        public function validate()
+        {
+        }
+        /**
+         * Preview how many records would move, per table.
+         *
+         * @return array<string, int>|\WP_Error Map of table suffix => row count.
+         */
+        public function preview()
+        {
+        }
+        /**
+         * Perform the move inside a single DB transaction.
+         *
+         * @param array $options Reserved for future use (e.g. selective entities).
+         *
+         * @return array|\WP_Error Result summary: [ 'moved' => [table => rows], 'from' => id, 'to' => id ].
+         */
+        public function move(array $options = [])
+        {
+        }
+        /**
+         * Recompute total_orders / total_spent user meta from the orders table.
+         *
+         * @param int $user_id User whose stats to recount.
+         */
+        protected function recount_customer_stats(int $user_id)
+        {
+        }
+        /**
+         * Append an audit entry to both users' move logs.
+         *
+         * @param array $result Result summary.
+         */
+        protected function log_move(array $result)
         {
         }
     }
@@ -25664,6 +26707,28 @@ namespace StoreEngine\Classes {
         public static function add_fee(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
         {
         }
+        /**
+         * Materialize subscription signup/setup fees as one-time order fee items.
+         *
+         * Non-subscription setup fees are added to the cart as fees (see Cart::
+         * add_product_to_cart) and flow into the order via add_fee(). Subscription
+         * setup fees deliberately are NOT cart fees — they must not recur, so the
+         * subscription addon folds them into the cart's *aggregate* total via a
+         * price-calculation filter instead. That aggregate is display-only: it never
+         * becomes an order item, so Order::calculate_totals() (which sums line items
+         * + fee items) drops the fee and the recorded order total under-runs what
+         * the customer is charged — e.g. base 400 + fee 100 records as 400 while
+         * gateways collect 500.
+         *
+         * Adding the fee here as a one-time OrderItemFee puts it into the order total
+         * (so order-total gateways like Razorpay/PayPal charge it) and the order
+         * record reconciles with itemizing gateways (Paddle/Stripe). It stays off the
+         * recurring subscription, which is built from the recurring cart (fees
+         * removed), and is skipped on renewals.
+         */
+        public static function add_subscription_setup_fees(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
+        {
+        }
         public static function add_tax(\StoreEngine\Classes\Order &$order, \StoreEngine\Classes\Cart $cart)
         {
         }
@@ -27382,6 +28447,21 @@ namespace StoreEngine\Classes {
          * @return bool Success or fail
          */
         protected static function readfile_chunked(string $file, $start = 0, $length = 0): bool
+        {
+        }
+        /**
+         * Whether a resolved LOCAL file path is safe to serve.
+         *
+         * Canonicalises the path with realpath() and confirms it lives inside one of
+         * the allowed roots (WP install, wp-content, the uploads dir, or StoreEngine's
+         * secure uploads dir). Rejects traversal ("../") and absolute paths pointing
+         * anywhere else on the filesystem, closing arbitrary-file-read via a crafted
+         * downloadable file URL.
+         *
+         * @param string $file Absolute local file path (already parsed).
+         * @return bool True if the file may be served.
+         */
+        protected static function is_allowed_local_path(string $file): bool
         {
         }
         /**
@@ -32905,6 +33985,38 @@ namespace StoreEngine {
     }
 }
 namespace StoreEngine\Cli {
+    class Account extends \WP_CLI_Command
+    {
+        /**
+         * Move a customer's StoreEngine data (orders, subscriptions, licenses, etc.)
+         * from one WordPress user to another. Neither account is deleted — only the
+         * ownership of the records changes. The transfer is additive.
+         *
+         * ## OPTIONS
+         *
+         * --from=<from>
+         * : Source user ID (data is moved FROM here).
+         *
+         * --to=<to>
+         * : Target user ID (data is moved TO here).
+         *
+         * [--dry-run]
+         * : Show what would move without changing anything.
+         *
+         * [--yes]
+         * : Skip the confirmation prompt.
+         *
+         * ## EXAMPLES
+         *
+         *     wp storeengine account move --from=12 --to=34 --dry-run
+         *     wp storeengine account move --from=12 --to=34 --yes
+         *
+         * @subcommand move
+         */
+        public function move($args, $assoc_args)
+        {
+        }
+    }
     class License extends \WP_CLI_Command
     {
         /**
@@ -33162,6 +34274,9 @@ namespace StoreEngine {
         {
         }
         public function register_coupon_meta()
+        {
+        }
+        public function register_category_rest_fields()
         {
         }
         public static function register_attribute_taxonomy(string $name, string $label, bool $public)
@@ -38142,6 +39257,20 @@ namespace StoreEngine\Utils {
         public static function get_contents(string $file)
         {
         }
+        /**
+         * Render a PHP template file and return its output.
+         *
+         * Used for the block-markup page-content templates: they carry a
+         * `defined( 'ABSPATH' ) || exit;` direct-access guard (required by Plugin
+         * Check), so they must be executed via include — not read raw — otherwise
+         * the guard line would leak into the generated page content.
+         *
+         * @param string $file Absolute path to the template file.
+         * @return string Rendered markup, or '' if the file is missing.
+         */
+        public static function render_template(string $file): string
+        {
+        }
     }
 }
 namespace StoreEngine\Utils\traits {
@@ -39739,6 +40868,27 @@ namespace StoreEngine\Utils {
         {
         }
         public static function has_subscription(\StoreEngine\Classes\Order $order): bool
+        {
+        }
+        /**
+         * Whether a gateway is allowed to settle a specific order, given the
+         * order's own contents rather than the (possibly absent) cart.
+         *
+         * `PaymentGateway::is_available()` only sees a subscription via the cart's
+         * `has_subscription` meta, so it never blocks non-recurring gateways
+         * (COD, BACS, Check) on requests that bypass the cart — namely the
+         * `/checkout/pay-order` and `/checkout/payment-intent` REST endpoints used
+         * by the frontend-dashboard "Pay Order" / early-renewal flows. Call this
+         * as a server-side guard wherever a gateway is charged directly against an
+         * existing order id, so a stale or forged `payment_method` can't settle a
+         * subscription renewal through a gateway that can't actually process one.
+         *
+         * @param \StoreEngine\Payment\Gateways\PaymentGateway $gateway
+         * @param \StoreEngine\Classes\Order                                        $order
+         *
+         * @return bool
+         */
+        public static function gateway_can_pay_order(\StoreEngine\Payment\Gateways\PaymentGateway $gateway, \StoreEngine\Classes\Order $order): bool
         {
         }
         public static function has_subscription_trial(\StoreEngine\Classes\Order $order): bool
