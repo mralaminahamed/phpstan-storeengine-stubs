@@ -616,12 +616,6 @@ namespace StoreEngine\Addons\Affiliate\Database {
         {
         }
     }
-    class CreatePayout
-    {
-        public static function up($prefix, $charset_collate)
-        {
-        }
-    }
     class CreateReferralTrack
     {
         public static function up($prefix, $charset_collate)
@@ -757,6 +751,13 @@ namespace StoreEngine\Addons\Affiliate\models {
         public static function update(int $id, array $args)
         {
         }
+        /**
+         * Shapes a unified-ledger row back into the column names the affiliate
+         * UI was built against, so the React table doesn't need to change.
+         */
+        protected static function shape_for_legacy_ui(object $row): array
+        {
+        }
     }
     class ReferralTrack
     {
@@ -843,7 +844,27 @@ namespace StoreEngine\Addons\Affiliate\Post {
 namespace StoreEngine\Addons\Affiliate {
     class Role
     {
+        const ROLE = 'storeengine_affiliate';
+        const CAPS = [
+            'manage_storeengine_affiliate',
+            // affiliate post type
+            'edit_storeengine_affiliate',
+            'read_storeengine_affiliate',
+            'delete_storeengine_affiliate',
+            'delete_storeengine_affiliates',
+            'edit_storeengine_affiliates',
+            'edit_others_storeengine_affiliates',
+            'read_private_storeengine_affiliates',
+            // common WP
+            'edit_post',
+            'edit_posts',
+            'read',
+            'edit_others_posts',
+        ];
         public static function add_affiliate_role()
+        {
+        }
+        public static function remove_affiliate_role(): void
         {
         }
     }
@@ -1048,6 +1069,13 @@ namespace StoreEngine\Addons\Csv\Ajax {
         protected string $namespace = STOREENGINE_PLUGIN_SLUG . '_csv';
         protected static \StoreEngine\Classes\EventStreamServer $sse;
         public function __construct()
+        {
+        }
+        /**
+         * Returns the user_id to scope export queries by, or 0 for full visibility.
+         * Vendors get scoped to their own data; admin/shop_manager get everything.
+         */
+        protected function vendor_scope_user_id(): int
         {
         }
         public function file_download(array $payload)
@@ -1406,6 +1434,16 @@ namespace StoreEngine\Addons\Email\Admin {
         {
         }
         /**
+         * Recursive defaults-aware merge. Each key in $override replaces the
+         * value in $base; when both sides are associative arrays we recurse so
+         * nested defaults survive a partial save (e.g. saved `email_subject`
+         * overrides default while a missing nested `is_enable` inherits the
+         * default `true`).
+         */
+        protected static function deep_merge_defaults(array $base, array $override): array
+        {
+        }
+        /**
          * One-shot upgrade for sites that activated the email addon before
          * subjects included {order_id}. Without a unique token, Gmail/Outlook
          * thread every "New order" notification into one conversation in the
@@ -1485,6 +1523,73 @@ namespace StoreEngine\Addons\Email\Ajax {
     }
 }
 namespace StoreEngine\Addons\Email {
+    class EmailLogger
+    {
+        use \StoreEngine\Traits\Singleton;
+        /**
+         * The EmailLog row created by the most recent chokepoint filter call.
+         * Consumed by wp_mail_succeeded / wp_mail_failed in the same request.
+         *
+         * wp_mail() is synchronous and there are no nested filter calls between
+         * our chokepoint filter and wp_mail() itself, so a single-slot pending
+         * tracker is sufficient (no need for a stack keyed by recipient + subject).
+         *
+         * @var \StoreEngine\Classes\EmailLog|null
+         */
+        protected ?\StoreEngine\Classes\EmailLog $pending = null;
+        protected function __construct()
+        {
+        }
+        /**
+         * Chokepoint filter handler.
+         *
+         * @param array $arguments mail arguments: to, subject, body, headers, attachments.
+         * @param string $email_name Email type slug (e.g. 'order_confirmation').
+         * @param array|mixed $context Extra args passed to mail_send() — typically carries order_id, abandoned_cart, subscription_id, etc.
+         *
+         * @return array Unmodified arguments.
+         */
+        public function capture_send(array $arguments, string $email_name, $context = []): array
+        {
+        }
+        /**
+         * Flip the pending row to 'sent' once wp_mail returns true.
+         */
+        public function mark_sent($mail_data)
+        {
+        }
+        /**
+         * Flip the pending row to 'failed' and record the WP_Error message.
+         */
+        public function mark_failed($wp_error)
+        {
+        }
+        /**
+         * Password reset filter handler. WP core dispatches the email after this
+         * filter, then fires wp_mail_succeeded / wp_mail_failed — so we just stage
+         * the row and let the same terminal-state actions update it.
+         */
+        public function capture_password_reset($defaults, $key = '', $user_login = '', $user_data = null): array
+        {
+        }
+        /**
+         * Map the chokepoint's $context array into entity links.
+         *
+         * @return array [ related_entity_type, related_entity_id, order_id, customer_id ]
+         */
+        protected function resolve_context(array $context): array
+        {
+        }
+        /**
+         * Reduce array / comma-separated / single-address recipients to one canonical
+         * string. The 'recipient' column is indexed for fast per-customer lookups;
+         * storing the original (comma-separated) form keeps the audit truthful, but
+         * we strip whitespace so the index doesn't drift.
+         */
+        protected function normalize_recipient($to): string
+        {
+        }
+    }
     final class Email extends \StoreEngine\Classes\AbstractAddon
     {
         use \StoreEngine\Traits\Singleton;
@@ -1686,6 +1791,29 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
         public function send_mail($order_id, $old_status, $new_status, \StoreEngine\Classes\Order $order)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Email {
+    class ResendRegistry
+    {
+        use \StoreEngine\Traits\Singleton;
+        /** @var array<string, callable> */
+        protected array $handlers = [];
+        protected function __construct()
+        {
+        }
+        protected function register_core_handlers()
+        {
+        }
+        public function get_handler(string $email_type): ?callable
+        {
+        }
+        public function get_resendable_types(): array
+        {
+        }
+        public function is_resendable(string $email_type): bool
         {
         }
     }
@@ -2484,6 +2612,130 @@ namespace StoreEngine\Addons\InstantCheckout {
         {
         }
         protected static function render_inline_mount(array $items, array $atts): string
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Inventory {
+    final class Api
+    {
+        public static function init()
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Inventory\Api {
+    /**
+     * Single-location stock adjustment.
+     *
+     * Calls free-core StockManager::adjust_stock() which writes to
+     * `variation.stock_quantity` (or simple-product post meta) and the
+     * `storeengine_stock_movements` table. The Pro inventory-pro addon adds a
+     * separate `/inventory/locations-stock` endpoint that adjusts at a chosen
+     * location.
+     */
+    final class AdjustController
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public static function register_routes()
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function adjust(\WP_REST_Request $request)
+        {
+        }
+    }
+    final class MovementsController
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public static function register_routes()
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function query(\WP_REST_Request $request)
+        {
+        }
+    }
+    /**
+     * Single-location stock listing.
+     *
+     * Lists variations + simple products with their tracked qty, status, and low
+     * threshold. The Pro inventory-pro addon overrides this surface with a
+     * per-location version (different REST path: `/inventory/locations-stock`).
+     */
+    final class StockController
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public static function register_routes()
+        {
+        }
+        public static function permission(): bool
+        {
+        }
+        public static function query(\WP_REST_Request $request)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Inventory\Classes {
+    /**
+     * Centralized permission checks for inventory operations.
+     *
+     * Admin and shop_manager keep full access. Vendor users (with the
+     * `manage_storeengine_vendor` capability granted by the multi-vendor addon)
+     * are scoped to products they author — they cannot read or mutate stock for
+     * products owned by other vendors. Inventory works standalone if the
+     * multi-vendor addon isn't installed (the vendor branch never triggers).
+     */
+    final class Authorization
+    {
+        const VENDOR_CAP = 'manage_storeengine_vendor';
+        /**
+         * Permission gate for general inventory access (listing endpoints).
+         * Vendors get true, but the controller MUST scope query results
+         * to their own products via current_user_id().
+         */
+        public static function can_access_inventory(): bool
+        {
+        }
+        /**
+         * Permission gate for ops that require a specific product
+         * (adjust, transfer, set stock). Vendors must own the product.
+         */
+        public static function can_modify_product(int $product_id, int $user_id = 0): bool
+        {
+        }
+        /**
+         * Returns the user_id to scope inventory list queries by, or 0 if
+         * the caller has full visibility (admin/shop_manager).
+         */
+        public static function scope_user_id(): int
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Inventory {
+    final class Inventory extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'inventory';
+        public function define_constants()
+        {
+        }
+        public function init_addon()
         {
         }
     }
@@ -3749,6 +4001,932 @@ namespace StoreEngine\Addons\MultiCurrency {
         {
         }
         public function addon_deactivation_hook(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor {
+    /**
+     * Registers the "Vendors" entry in the StoreEngine admin SPA menu.
+     *
+     * The list view is rendered by the React BackendDashboard. When the URL has
+     * `?page=storeengine-vendors&details=<user_id>`, a PHP-only detail view is
+     * rendered instead (no React rebuild needed) so admins can review the full
+     * application submitted by a vendor.
+     */
+    class Admin
+    {
+        const MENU_SLUG = 'storeengine-vendors';
+        public static function init()
+        {
+        }
+        public function register_menu(array $menu_items): array
+        {
+        }
+        protected function is_details_request(): bool
+        {
+        }
+        public function maybe_handle_details_action(): void
+        {
+        }
+        public function maybe_render_details_view(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor\Api {
+    class ProductPermissions
+    {
+        public static function init()
+        {
+        }
+        protected function current_user_is_approved_vendor(): bool
+        {
+        }
+        /**
+         * @param object          $prepared_post
+         * @param \WP_REST_Request $request
+         * @return object|\WP_Error
+         */
+        public function force_vendor_fields($prepared_post, $request)
+        {
+        }
+        /**
+         * Scope the products list endpoint to the vendor's own posts.
+         */
+        public function scope_list_query(array $args, $request): array
+        {
+        }
+        /**
+         * Block edit/delete of OTHER vendors' products by mapping the meta cap to do_not_allow.
+         */
+        public function restrict_others_products(array $caps, string $cap, int $user_id, array $args): array
+        {
+        }
+    }
+    class Settings
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permission(): bool
+        {
+        }
+        public function get_settings()
+        {
+        }
+        public function save_settings(\WP_REST_Request $request)
+        {
+        }
+    }
+    class Vendor
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function is_vendor(): bool
+        {
+        }
+        public function get_me(\WP_REST_Request $request)
+        {
+        }
+        public function update_me(\WP_REST_Request $request)
+        {
+        }
+    }
+    /**
+     * Admin-facing REST controller for the React Vendors page.
+     * Routes:
+     *   GET    /storeengine/v1/vendors            — list (filter by status, search, paged)
+     *   GET    /storeengine/v1/vendors/{user_id}  — single
+     *   PATCH  /storeengine/v1/vendors/{user_id}  — update store_name / commission / payout_email
+     *   POST   /storeengine/v1/vendors/{user_id}/approve
+     *   POST   /storeengine/v1/vendors/{user_id}/suspend
+     *
+     * All gated by `manage_storeengine_vendor` (granted to admins).
+     */
+    class Vendors
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        public function permission_check()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function create(\WP_REST_Request $request)
+        {
+        }
+        public function list(\WP_REST_Request $request)
+        {
+        }
+        public function get_one(\WP_REST_Request $request)
+        {
+        }
+        public function update_one(\WP_REST_Request $request)
+        {
+        }
+        public function approve(\WP_REST_Request $request)
+        {
+        }
+        public function suspend(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Assign one or more existing products to a vendor by changing their `post_author`
+         * and updating the lookup table's vendor_id for any historical order rows tied
+         * to those products. Historical commission_amount values are intentionally NOT
+         * recomputed — those were calculated at order-paid time with the prior owner's
+         * rate, and retroactively rewriting them would be confusing for accounting.
+         */
+        public function assign_products(\WP_REST_Request $request)
+        {
+        }
+        protected function shape(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor): array
+        {
+        }
+    }
+    class Withdrawals
+    {
+        const NS = 'storeengine/v1';
+        public static function init()
+        {
+        }
+        protected static function table(): string
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function admin_only(): bool
+        {
+        }
+        public function vendor_only(): bool
+        {
+        }
+        public function list_permission(\WP_REST_Request $request)
+        {
+        }
+        public function list(\WP_REST_Request $request)
+        {
+        }
+        public function create(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Allowed forward transitions for withdrawal state. `paid` is terminal —
+         * once a payout has been issued, the admin can't flip back to pending
+         * (which would re-fire status-changed listeners and risk double-payouts
+         * by gateway hooks). Reversal of a mistaken `paid` must go through a
+         * separate refund flow that's auditable, not a quiet status edit.
+         */
+        const WITHDRAWAL_TRANSITIONS = ['pending' => ['approved', 'rejected', 'cancelled'], 'approved' => ['paid', 'rejected', 'cancelled'], 'rejected' => ['pending'], 'cancelled' => ['pending'], 'paid' => []];
+        public function update_status(\WP_REST_Request $request)
+        {
+        }
+        public function get_payment_method()
+        {
+        }
+        public function update_payment_method(\WP_REST_Request $request)
+        {
+        }
+        public function get_balance()
+        {
+        }
+        protected function fetch(int $id): ?array
+        {
+        }
+        protected function shape(array $row): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor\Classes {
+    /**
+     * Computes a vendor's available balance for withdrawals.
+     *
+     * Lifetime commission (positive + negative refund rows) MINUS any pending +
+     * approved + paid withdrawal amounts. Pending requests count as held funds so
+     * a vendor can't double-spend by stacking requests.
+     */
+    class Balance
+    {
+        public static function for_vendor(int $user_id): float
+        {
+        }
+        public static function lifetime_earned(int $user_id): float
+        {
+        }
+        public static function paid_total(int $user_id): float
+        {
+        }
+    }
+    class Vendor
+    {
+        const STATUS_PENDING = 'pending';
+        const STATUS_APPROVED = 'approved';
+        const STATUS_SUSPENDED = 'suspended';
+        protected int $user_id = 0;
+        protected string $store_name = '';
+        protected string $store_slug = '';
+        protected string $status = self::STATUS_PENDING;
+        protected ?float $commission_rate = null;
+        protected string $commission_type = 'percent';
+        protected string $payout_email = '';
+        protected ?string $date_registered = null;
+        protected ?string $date_approved = null;
+        protected bool $is_visible = true;
+        protected bool $is_default = false;
+        protected array $badges = [];
+        protected string $payment_method = 'paypal';
+        protected array $payment_data = [];
+        protected string $first_name = '';
+        protected string $last_name = '';
+        protected string $phone = '';
+        protected string $address = '';
+        protected string $store_description = '';
+        protected string $business_type = 'individual';
+        protected ?string $terms_accepted_at = null;
+        protected bool $loaded = false;
+        public function __construct(int $user_id = 0)
+        {
+        }
+        protected static function table(): string
+        {
+        }
+        public function load(): bool
+        {
+        }
+        protected function set_props_from_row(array $row)
+        {
+        }
+        public function get_first_name(): string
+        {
+        }
+        public function set_first_name(string $value)
+        {
+        }
+        public function get_last_name(): string
+        {
+        }
+        public function set_last_name(string $value)
+        {
+        }
+        public function get_full_name(): string
+        {
+        }
+        public function get_phone(): string
+        {
+        }
+        public function set_phone(string $value)
+        {
+        }
+        public function get_address(): string
+        {
+        }
+        public function set_address(string $value)
+        {
+        }
+        public function get_store_description(): string
+        {
+        }
+        public function set_store_description(string $value)
+        {
+        }
+        public function get_business_type(): string
+        {
+        }
+        public function set_business_type(string $value)
+        {
+        }
+        public function get_terms_accepted_at(): ?string
+        {
+        }
+        public function set_terms_accepted_at(?string $value)
+        {
+        }
+        public function is_visible(): bool
+        {
+        }
+        public function set_is_visible(bool $value)
+        {
+        }
+        public function is_default(): bool
+        {
+        }
+        public function set_is_default(bool $value)
+        {
+        }
+        public function get_badges(): array
+        {
+        }
+        public function set_badges(array $badges)
+        {
+        }
+        public function get_payment_method(): string
+        {
+        }
+        public function set_payment_method(string $method)
+        {
+        }
+        public function get_payment_data(): array
+        {
+        }
+        /**
+         * Allowlist of payment-data keys we accept from the vendor. Non-string
+         * values (nested arrays, booleans) used to flow through unchanged, which
+         * meant any future template echoing `$payment_data['x']` without escape
+         * would XSS. Sticking to a typed allowlist also lets us drop unexpected
+         * keys before they get serialized into the vendor profile.
+         */
+        const ALLOWED_PAYMENT_FIELDS = ['paypal_email', 'account_holder', 'account_number', 'bank_name', 'branch', 'routing_number', 'swift', 'iban', 'notes'];
+        public function set_payment_data(array $data)
+        {
+        }
+        public function exists(): bool
+        {
+        }
+        public function get_user_id(): int
+        {
+        }
+        public function set_user_id(int $user_id)
+        {
+        }
+        public function get_store_name(): string
+        {
+        }
+        public function set_store_name(string $name)
+        {
+        }
+        public function get_store_slug(): string
+        {
+        }
+        public function set_store_slug(string $slug)
+        {
+        }
+        public function get_status(): string
+        {
+        }
+        public function set_status(string $status)
+        {
+        }
+        public function is_approved(): bool
+        {
+        }
+        public function get_commission_rate(): ?float
+        {
+        }
+        public function set_commission_rate(?float $rate)
+        {
+        }
+        public function get_commission_type(): string
+        {
+        }
+        public function set_commission_type(string $type)
+        {
+        }
+        public function get_payout_email(): string
+        {
+        }
+        public function set_payout_email(string $email)
+        {
+        }
+        public function get_date_registered(): ?string
+        {
+        }
+        public function get_date_approved(): ?string
+        {
+        }
+        public function save(): bool
+        {
+        }
+        public function approve()
+        {
+        }
+        public function suspend()
+        {
+        }
+        public function to_array(): array
+        {
+        }
+    }
+    class Vendors
+    {
+        protected static function table(): string
+        {
+        }
+        /**
+         * @param array $args { status?: string, search?: string, limit?: int, offset?: int }
+         * @return Vendor[]
+         */
+        public static function query(array $args = []): array
+        {
+        }
+        public static function get_by_slug(string $slug): ?\StoreEngine\Addons\MultiVendor\Classes\Vendor
+        {
+        }
+        public static function count_by_status(string $status): int
+        {
+        }
+        public static function slug_exists(string $slug, int $exclude_user_id = 0): bool
+        {
+        }
+        public static function unique_slug(string $base, int $user_id = 0): string
+        {
+        }
+        /**
+         * Resolve the global default commission rate from addon settings.
+         *
+         * @return array{ rate: float, type: string }
+         */
+        public static function get_global_commission(): array
+        {
+        }
+    }
+    /**
+     * Bridges multi-vendor lifecycle actions into the webhooks addon's event
+     * registry. The webhooks addon exposes `storeengine/webhooks_event_listeners`
+     * for exactly this kind of extension — adding vendor topics here means
+     * external systems can subscribe without webhooks needing to import any
+     * multi-vendor code directly.
+     */
+    final class WebhookEvents
+    {
+        const TOPIC_VENDOR_REGISTERED = 'vendor_registered';
+        const TOPIC_VENDOR_APPROVED = 'vendor_approved';
+        const TOPIC_VENDOR_SUSPENDED = 'vendor_suspended';
+        const TOPIC_COMMISSION_COMPUTED = 'commission_computed';
+        const TOPIC_COMMISSION_REVERSED = 'commission_reversed';
+        const TOPIC_WITHDRAWAL_REQUESTED = 'withdrawal_requested';
+        const TOPIC_WITHDRAWAL_STATUS_CHANGED = 'withdrawal_status_changed';
+        const TOPIC_PAYOUT_RECORDED = 'payout_recorded';
+        const TOPIC_VENDOR_PRODUCTS_ASSIGNED = 'vendor_products_assigned';
+        public static function init(): void
+        {
+        }
+        public static function register_event_slugs(array $slugs): array
+        {
+        }
+        public static function register_event_labels(array $labels): array
+        {
+        }
+        public static function register_event_group(array $groups): array
+        {
+        }
+        public static function register(array $listeners): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Webhooks\Interfaces {
+    interface ListenersInterface
+    {
+        public static function dispatch($deliver_callback, $webhook);
+    }
+}
+namespace StoreEngine\Addons\Webhooks\Classes {
+    abstract class AbstractListener implements \StoreEngine\Addons\Webhooks\Interfaces\ListenersInterface
+    {
+        protected function __construct()
+        {
+        }
+        public function __clone()
+        {
+        }
+        public function __wakeup()
+        {
+        }
+        protected static function prepare_meta_data(array $meta_data): array
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor\Classes\Webhooks {
+    class CommissionComputed extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class CommissionReversed extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class PayoutRecorded extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class VendorApproved extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class VendorProductsAssigned extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class VendorRegistered extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class VendorSuspended extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class WithdrawalRequested extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class WithdrawalStatusChanged extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor {
+    class CommissionCalculator
+    {
+        public static function init()
+        {
+        }
+        /**
+         * @param int   $order_id
+         * @param mixed $order
+         */
+        public function on_order_paid($order_id, $order)
+        {
+        }
+        public function on_status_changed($order_id, $old_status, $new_status, $order)
+        {
+        }
+        protected function lookup_table(): string
+        {
+        }
+        /**
+         * Walk all lookup rows for the order and compute commission_amount.
+         * Idempotent: skips rows that already have a non-zero commission for the same vendor.
+         */
+        public function compute_for_order(int $order_id)
+        {
+        }
+        /**
+         * On refund, write a separate negative-amount lookup row per vendor line.
+         * Originals are not mutated, so SUM(commission_amount) gives the net balance.
+         */
+        public function reverse_for_order(int $order_id)
+        {
+        }
+        protected function resolve_commission_for_vendor(int $vendor_id, float $net_revenue): float
+        {
+        }
+    }
+    class Database
+    {
+        const SCHEMA_HASH_OPTION = 'storeengine_multi_vendor_schema_hash';
+        public static function init()
+        {
+        }
+        /**
+         * Re-runs the addon's dbDelta whenever any schema file under
+         * addons/multi-vendor/database/ changes — no manual version bump needed.
+         */
+        public static function maybe_sync_schema(): void
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor\Database {
+    class CreateVendors
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
+    class CreateWithdrawals
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
+    class MigrateLookupTable
+    {
+        const BACKFILL_BATCH_SIZE = 200;
+        const BACKFILL_HOOK = 'storeengine/multi_vendor/backfill_lookup_vendor_id';
+        public static function migrate_vendors_table()
+        {
+        }
+        public static function schedule_backfill()
+        {
+        }
+        /**
+         * Walks lookup rows where vendor_id IS NULL in batches and fills it from product post_author.
+         *
+         * @param int $offset
+         */
+        public static function run_backfill($offset = 0)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\MultiVendor {
+    class Hooks
+    {
+        public static function init()
+        {
+        }
+        /**
+         * Vendors must use the frontend dashboard exclusively. If they hit any wp-admin URL,
+         * redirect to the dashboard. Allow AJAX, REST, async-upload (media library uploads
+         * from the frontend product form rely on async-upload.php), and the logout flow.
+         */
+        public function block_admin_for_vendors()
+        {
+        }
+        /**
+         * Hide the wp-admin bar on the front end for vendors — they should live in the dashboard UI.
+         */
+        public function hide_admin_bar_for_vendors($show)
+        {
+        }
+        /**
+         * Resolve vendor_id from a product's post_author for lookup-table writes.
+         *
+         * @param int|null $current
+         * @param int      $product_id
+         * @return int|null
+         */
+        public function resolve_vendor_id($current, $product_id)
+        {
+        }
+        /**
+         * Force the wp-admin product list to only show the vendor's own products.
+         */
+        public function scope_admin_product_query($query)
+        {
+        }
+        public function render_vendor_status_banner(): void
+        {
+        }
+        // Always inject vendor routes so PermalinkRewrite::add_rewrite_rules can
+        // build URL rules (rewrite generation runs in admin context with no
+        // vendor as current user). Menu visibility is per-item via `public`.
+        public function inject_vendor_menu_items(array $items): array
+        {
+        }
+    }
+    final class MultiVendor extends \StoreEngine\Classes\AbstractAddon
+    {
+        use \StoreEngine\Traits\Singleton;
+        protected string $addon_name = 'multi-vendor';
+        public function define_constants()
+        {
+        }
+        public function init_addon()
+        {
+        }
+        public function dispatch_hooks()
+        {
+        }
+        public function enqueue_assets()
+        {
+        }
+        public function addon_activation_hook()
+        {
+        }
+        public function addon_deactivation_hook()
+        {
+        }
+    }
+    /**
+     * Owner vendor — a default vendor row tied to the site's primary administrator.
+     * Created on addon activation when `auto_create_owner` is enabled. Useful for
+     * development/testing and for stores where the admin themself is also a vendor.
+     *
+     * Visibility on the public store / shop archive filter is controlled by the
+     * `owner_visible` setting; the row's `is_visible` column is the source of truth.
+     */
+    class OwnerVendor
+    {
+        public static function ensure()
+        {
+        }
+        /**
+         * Pick the owner user. Prefer a user with `manage_options`; fall back to the
+         * lowest-id administrator. Returns null when run outside an admin context
+         * (e.g. on the cron) and there's no resolvable admin.
+         */
+        protected static function resolve_owner_user(): ?\WP_User
+        {
+        }
+    }
+    class Role
+    {
+        const ROLE = 'storeengine_vendor';
+        public static function add_vendor_role()
+        {
+        }
+        public static function remove_vendor_role(): void
+        {
+        }
+    }
+    /**
+     * Global multi-vendor settings, persisted as a single JSON-encoded option.
+     */
+    class Settings
+    {
+        const OPTION = 'storeengine_multi_vendor_settings';
+        public static function defaults(): array
+        {
+        }
+        public static function all(): array
+        {
+        }
+        public static function get(string $key, $fallback = null)
+        {
+        }
+        public static function save(array $values): bool
+        {
+        }
+        public static function badge_label(string $slug): string
+        {
+        }
+        public static function badge_color(string $slug): string
+        {
+        }
+    }
+    /**
+     * Shop archive: filter products by vendor via ?vendor_slug=foo.
+     *
+     * Hooks pre_get_posts on the product archive (and storefront product loop) to
+     * limit results to a vendor's published products. Renders a filter UI in the
+     * archive sidebar/header listing every approved & visible vendor with a count.
+     */
+    class ShopFilter
+    {
+        const QUERY_VAR = 'vendor_slug';
+        public static function init()
+        {
+        }
+        public function register_query_var(array $vars): array
+        {
+        }
+        public function scope_archive_query(\WP_Query $query)
+        {
+        }
+        /**
+         * Render the filter bar above the archive content. Visible vendors only —
+         * default/owner vendor with `is_visible=0` is hidden from the list.
+         */
+        public function render_filter_bar($context = '')
+        {
+        }
+    }
+    class Shortcode
+    {
+        public static function init()
+        {
+        }
+        public function render_signup(): string
+        {
+        }
+        protected static function render_vendor_status_message(int $user_id): string
+        {
+        }
+        public function handle_signup_post()
+        {
+        }
+        /**
+         * Always lands the user back on the signup page, even when the browser strips
+         * the Referer header. Prefers the hidden _signup_url field rendered into the
+         * form; falls back to Referer; then home_url().
+         */
+        protected static function redirect_back(string $status): void
+        {
+        }
+        protected static function notify_admin_of_new_vendor(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor, string $email): void
+        {
+        }
+    }
+    /**
+     * Public vendor store page at /vendor/{slug}/.
+     *
+     * Registers a query var, rewrite rule, and a template_include hook that swaps
+     * the standard product archive query for one scoped to the vendor's user_id
+     * and renders a vendor-store.php template.
+     */
+    class StorePage
+    {
+        const QUERY_VAR = 'storeengine_vendor';
+        const URL_PREFIX = 'vendor';
+        public static function init()
+        {
+        }
+        public function register_query_var(array $vars): array
+        {
+        }
+        public function register_rewrite()
+        {
+        }
+        /**
+         * Returns the active store-page vendor or null when this is not a store URL.
+         */
+        public static function current_vendor(): ?\StoreEngine\Addons\MultiVendor\Classes\Vendor
+        {
+        }
+        /**
+         * Scope the main query to the vendor's published products.
+         */
+        public function scope_main_query(\WP_Query $query)
+        {
+        }
+        /**
+         * Load the vendor store template when the URL matches.
+         */
+        public function load_template($template)
+        {
+        }
+        /**
+         * Public URL for a given vendor.
+         */
+        public static function url_for(\StoreEngine\Addons\MultiVendor\Classes\Vendor $vendor): string
+        {
+        }
+    }
+    /**
+     * Vendor dashboard template loader.
+     *
+     * Templates live under the core plugin's `templates/multi-vendor/` directory
+     * (same convention the email addon follows). `Helper::get_template` gives us
+     * the standard theme override flow:
+     *
+     *   1. Theme: `<theme>/storeengine/multi-vendor/<relative>`
+     *   2. Plugin default: `<storeengine>/templates/multi-vendor/<relative>`
+     *
+     * Endpoints fire one method per dashboard route; each just builds the
+     * `$args` array and delegates to `Helper::get_template`.
+     */
+    class TemplateLoader
+    {
+        const TEMPLATE_BASE = 'multi-vendor/';
+        public static function init()
+        {
+        }
+        protected function require_approved_vendor(): ?\StoreEngine\Addons\MultiVendor\Classes\Vendor
+        {
+        }
+        protected function render(string $relative, array $args = []): void
+        {
+        }
+        public function render_overview()
+        {
+        }
+        public function render_products()
+        {
+        }
+        public function render_product_edit($sub_page = '')
+        {
+        }
+        public function render_orders()
+        {
+        }
+        public function render_profile()
+        {
+        }
+        public function render_payment_method()
+        {
+        }
+        public function render_withdraw()
+        {
+        }
+        public function render_inventory()
+        {
+        }
+        public function render_returns()
         {
         }
     }
@@ -15176,28 +16354,7 @@ namespace StoreEngine\Addons\Subscription {
         }
     }
 }
-namespace StoreEngine\Addons\Webhooks\Interfaces {
-    interface ListenersInterface
-    {
-        public static function dispatch($deliver_callback, $webhook);
-    }
-}
 namespace StoreEngine\Addons\Webhooks\Classes {
-    abstract class AbstractListener implements \StoreEngine\Addons\Webhooks\Interfaces\ListenersInterface
-    {
-        protected function __construct()
-        {
-        }
-        public function __clone()
-        {
-        }
-        public function __wakeup()
-        {
-        }
-        protected static function prepare_meta_data(array $meta_data): array
-        {
-        }
-    }
     class Http
     {
         const METHOD_GET = 'GET';
@@ -15360,6 +16517,24 @@ namespace StoreEngine\Addons\Webhooks\Events {
         }
     }
 }
+namespace StoreEngine\Addons\Webhooks\Listeners\Cms {
+    final class Payload
+    {
+        /**
+         * Build a payload for a page/post (or any standard public post type).
+         */
+        public static function for_post(\WP_Post $post, string $event): array
+        {
+        }
+        /**
+         * Build a payload for a block-theme template or template part.
+         * Template slug is `theme//slug`; we surface both pieces.
+         */
+        public static function for_template(\WP_Post $post, string $event): array
+        {
+        }
+    }
+}
 namespace StoreEngine\Addons\Webhooks\Listeners\Coupon {
     class Created extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
     {
@@ -15424,6 +16599,22 @@ namespace StoreEngine\Addons\Webhooks\Listeners\Customer {
         }
     }
 }
+namespace StoreEngine\Addons\Webhooks\Listeners\GlobalStyles {
+    class Saved extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Webhooks\Listeners\Menu {
+    class Updated extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
 namespace StoreEngine\Addons\Webhooks\Listeners\Order {
     class Created extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
     {
@@ -15462,6 +16653,46 @@ namespace StoreEngine\Addons\Webhooks\Listeners\Order {
         }
     }
     class Updated extends \StoreEngine\Addons\Webhooks\Listeners\Order\Created
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Webhooks\Listeners\Page {
+    class Deleted extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class Published extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class Updated extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Webhooks\Listeners\Post {
+    class Deleted extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class Published extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class Updated extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
     {
         public static function dispatch($deliver_callback, $webhook)
         {
@@ -15509,6 +16740,20 @@ namespace StoreEngine\Addons\Webhooks\Listeners\Product {
         }
     }
 }
+namespace StoreEngine\Addons\Webhooks\Listeners\Template {
+    class PartSaved extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+    class Saved extends \StoreEngine\Addons\Webhooks\Classes\AbstractListener
+    {
+        public static function dispatch($deliver_callback, $webhook)
+        {
+        }
+    }
+}
 namespace StoreEngine\Addons\Webhooks {
     final class Webhooks extends \StoreEngine\Classes\AbstractAddon
     {
@@ -15524,6 +16769,20 @@ namespace StoreEngine\Addons\Webhooks {
         {
         }
         public static function get_event_labels()
+        {
+        }
+        /**
+         * Grouped event list for the React event picker (react-select group format).
+         *
+         * react-select renders `{ label, options: [{ label, value }] }` items as
+         * collapsible-style groups, so adding ~10 new events doesn't bury the
+         * existing 15 in a flat list. Each group is filterable so Pro addons can
+         * register their own group label and slot events into it without
+         * disturbing core.
+         *
+         * @return array<int,array{label:string,options:array<int,array{label:string,value:string}>}>
+         */
+        public static function get_event_groups(): array
         {
         }
         public function init_addon()
@@ -15723,6 +16982,29 @@ namespace StoreEngine {
         private function addons_loader()
         {
         }
+        /**
+         * Hard inter-addon dependency map.
+         *
+         * Activating an addon requires every slug in its list to already be active.
+         * Deactivating an addon is blocked while anything that lists it here is
+         * still active. Filter `storeengine/addons/dependencies` lets pro plugins
+         * extend the map without editing core.
+         */
+        public static function get_dependencies(): array
+        {
+        }
+        /**
+         * Slugs that currently depend on $addon_slug AND are themselves active.
+         */
+        public static function get_active_dependents(string $addon_slug): array
+        {
+        }
+        /**
+         * Slugs that $addon_slug requires but are NOT currently active.
+         */
+        public static function get_missing_requirements(string $addon_slug): array
+        {
+        }
         public static function activate(string $addon_slug)
         {
         }
@@ -15805,6 +17087,17 @@ namespace StoreEngine\Admin {
     class Menu
     {
         public static function init()
+        {
+        }
+        /**
+         * Inject Inventory, POS, Returns, and Reports entries so the React admin
+         * shell shows them in the side menu and the route switcher mounts the
+         * React pages. Each addon-owned menu is gated by its own active status —
+         * disabling the addon removes the entry. Reports remains visible
+         * unconditionally; tabs that depend on specific addons (e.g. profit
+         * from cost-profit) are gated at the REST / React level.
+         */
+        public static function inject_retail_menu_items(array $menu): array
         {
         }
         public static function get_menu_lists()
@@ -16325,6 +17618,18 @@ namespace StoreEngine\Ajax {
         protected function get_page_templates()
         {
         }
+        /**
+         * Author-scope guard for the price AJAX endpoints.
+         *
+         * The endpoint cap is `edit_storeengine_products` — held by admins,
+         * shop managers, AND vendors. Admins/shop managers also hold the
+         * "others" cap and can touch anything; vendors only their own
+         * products. Mirrors `ProductPermissions::restrict_others_products()`
+         * which gates the REST product-CRUD endpoints.
+         */
+        protected function user_can_manage_product_prices(int $product_id): bool
+        {
+        }
         protected function get_product_prices($payload)
         {
         }
@@ -16505,6 +17810,18 @@ namespace StoreEngine\Ajax {
         public function __construct()
         {
         }
+        /**
+         * Registry of "data cleanup" tools surfaced under the Action Scheduler tab.
+         * Addons can attach entries via the `storeengine/tools/data_cleanup_tools`
+         * filter — each entry pairs UI metadata with a server-side callback that
+         * performs the cleanup. Used when cancelling pending actions alone is not
+         * enough (e.g. also truncating addon-owned tables).
+         *
+         * @return array<int, array{id:string, label:string, description:string, confirm?:string, callback:callable}>
+         */
+        public static function get_data_cleanup_tools(): array
+        {
+        }
         protected function fetch_storeengine_status()
         {
         }
@@ -16522,9 +17839,13 @@ namespace StoreEngine\Ajax {
         {
         }
         /**
-         * Cancel pending/failed Action Scheduler events for the requested hooks.
+         * Cancel pending/failed Action Scheduler events for the requested hooks,
+         * optionally truncate AS logs, and optionally run one or more addon-supplied
+         * data cleanup callbacks (e.g. truncating an addon-owned records table).
+         * All three actions are handled in a single request so the UI can update
+         * in one round-trip.
          *
-         * @param array{hooks?: string[], include_logs?: bool} $payload
+         * @param array{hooks?: string[], include_logs?: bool, cleanup_tools?: string[]} $payload
          */
         protected function reset_storeengine_scheduled_actions(array $payload): array
         {
@@ -16828,6 +18149,29 @@ namespace StoreEngine\API {
          * `storeengine/checkout/hydrate_cart` so the addon's `OneClickService` and
          * `Stripe-intent` endpoint can call the same logic without a fork.
          */
+        /**
+         * Reserved superglobal keys that downstream auth/admin code trusts. We
+         * never let a REST-body caller inject values for these via the legacy
+         * gateway-compat $_POST piping below, even if a gateway author somehow
+         * named a parameter the same way.
+         */
+        const RESERVED_REQUEST_KEYS = ['action', '_wpnonce', '_wp_http_referer', '_method', 'storeengine_admin_action', 'storeengine_nonce', 'user_id', 'user_login', 'user_email', 'pwd'];
+        /**
+         * Copy scalar values from a REST-body array into $_POST/$_REQUEST so
+         * legacy gateway code paths (written against admin-ajax) can still read
+         * them via $_REQUEST. Two guards:
+         *
+         *   1. Skip RESERVED_REQUEST_KEYS — caller can't override WP/StoreEngine
+         *      internal keys that downstream code trusts for auth/admin flows.
+         *   2. Skip keys already set in $_POST — caller can't overwrite values
+         *      the framework already populated for this request.
+         *
+         * Centralized so all three pipe-points (place_order, pay_order,
+         * create_payment_intent) stay consistent.
+         */
+        protected static function pipe_legacy_post_keys(array $source): void
+        {
+        }
         public static function hydrate_cart_from_session($cart, array $session): void
         {
         }
@@ -16985,6 +18329,56 @@ namespace StoreEngine\API {
         {
         }
     }
+    class EmailLog extends \WP_REST_Controller
+    {
+        public function __construct()
+        {
+        }
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function get_items($request)
+        {
+        }
+        public function get_item($request)
+        {
+        }
+        public function get_settings($request)
+        {
+        }
+        public function save_settings($request)
+        {
+        }
+        public function purge_now($request)
+        {
+        }
+        public function get_resendable_types($request)
+        {
+        }
+        public function resend_item($request)
+        {
+        }
+        public function delete_item($request)
+        {
+        }
+        /**
+         * Shape an EmailLog entity into the REST response payload.
+         * Includes the decoded payload (not the raw JSON) so frontend doesn't
+         * have to double-decode.
+         */
+        protected function format_row(\StoreEngine\Classes\EmailLog $row): array
+        {
+        }
+        public function permissions_check($request)
+        {
+        }
+        public function get_collection_params(): array
+        {
+        }
+    }
     class Logs extends \WP_REST_Controller
     {
         /**
@@ -17064,6 +18458,182 @@ namespace StoreEngine\API {
          * @return array
          */
         public function get_settings_params(): array
+        {
+        }
+    }
+    class MeSubscriptions extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'me/subscriptions';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permission_check()
+        {
+        }
+        public function add_menu_item(array $items): array
+        {
+        }
+        public function list_subscriptions(\WP_REST_Request $request)
+        {
+        }
+        public function get_subscription(\WP_REST_Request $request)
+        {
+        }
+        public function cancel_subscription(\WP_REST_Request $request)
+        {
+        }
+        public function pause_subscription(\WP_REST_Request $request)
+        {
+        }
+        public function resume_subscription(\WP_REST_Request $request)
+        {
+        }
+        protected function change_status(\WP_REST_Request $request, string $new_status, string $note)
+        {
+        }
+        /**
+         * @return \StoreEngine\Addons\Subscription\Classes\Subscription|\WP_Error
+         */
+        protected function load_owned(int $id)
+        {
+        }
+        protected function format_subscription(\StoreEngine\Addons\Subscription\Classes\Subscription $sub, bool $detailed = false): array
+        {
+        }
+    }
+    class Me extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'me';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        /**
+         * Single permission gate: must be logged in. Per-resource ownership is
+         * enforced inside each handler.
+         */
+        public function permission_check()
+        {
+        }
+        // -------------------------------------------------------------------
+        // Profile
+        // -------------------------------------------------------------------
+        public function get_me(\WP_REST_Request $request)
+        {
+        }
+        public function update_me(\WP_REST_Request $request)
+        {
+        }
+        public function change_password(\WP_REST_Request $request)
+        {
+        }
+        // -------------------------------------------------------------------
+        // Menu (extensible)
+        // -------------------------------------------------------------------
+        public function get_menu(\WP_REST_Request $request)
+        {
+        }
+        // -------------------------------------------------------------------
+        // Orders
+        // -------------------------------------------------------------------
+        public function list_orders(\WP_REST_Request $request)
+        {
+        }
+        public function get_order(\WP_REST_Request $request)
+        {
+        }
+        public function cancel_order(\WP_REST_Request $request)
+        {
+        }
+        public function pay_order(\WP_REST_Request $request)
+        {
+        }
+        public function get_invoice(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * @return \StoreEngine\Classes\Order|\WP_Error
+         */
+        protected function load_owned_order(int $id)
+        {
+        }
+        protected function format_order_summary(\StoreEngine\Classes\Order $order): array
+        {
+        }
+        protected function format_order_full(\StoreEngine\Classes\Order $order): array
+        {
+        }
+        // -------------------------------------------------------------------
+        // Downloads
+        // -------------------------------------------------------------------
+        public function list_downloads(\WP_REST_Request $request)
+        {
+        }
+        protected function resolve_download_filename(int $product_id, string $download_id): string
+        {
+        }
+        public function sign_download(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Hooked at `storeengine/secure_downloads/customer_download/file_data`.
+         *
+         * Called from DownloadHandler::handle_secure_download() AFTER the URL
+         * signature has been verified. Validates the permission row one more time,
+         * atomically decrements remaining, increments count, and returns the
+         * file path/name for DownloadHandler::download() to stream.
+         *
+         * @param array $file_data Default empty.
+         * @param mixed $resource  Permission id from the signed URL's `resource` arg.
+         */
+        public static function resolve_customer_download_file($file_data, $resource, $product)
+        {
+        }
+        // -------------------------------------------------------------------
+        // Addresses
+        // -------------------------------------------------------------------
+        public function get_addresses(\WP_REST_Request $request)
+        {
+        }
+        public function update_address(\WP_REST_Request $request)
+        {
+        }
+        protected function extract_address($customer, string $type): array
+        {
+        }
+        // -------------------------------------------------------------------
+        // Payment methods
+        // -------------------------------------------------------------------
+        public function list_payment_methods(\WP_REST_Request $request)
+        {
+        }
+        public function delete_payment_method(\WP_REST_Request $request)
+        {
+        }
+        public function set_default_payment_method(\WP_REST_Request $request)
+        {
+        }
+        // -------------------------------------------------------------------
+        // Notifications + Privacy
+        // -------------------------------------------------------------------
+        public function get_notifications(\WP_REST_Request $request)
+        {
+        }
+        public function update_notifications(\WP_REST_Request $request)
+        {
+        }
+        public function get_privacy(\WP_REST_Request $request)
+        {
+        }
+        public function update_privacy(\WP_REST_Request $request)
+        {
+        }
+        public function request_personal_data_erasure(\WP_REST_Request $request)
         {
         }
     }
@@ -17323,13 +18893,45 @@ namespace StoreEngine\API {
         public static function init()
         {
         }
+        public function register_stock_routes()
+        {
+        }
+        /**
+         * Permission gate for the per-product stock routes. The old gate just
+         * checked the plural `edit_storeengine_products` cap, which the multi-
+         * vendor addon grants to EVERY vendor — so any vendor could POST to any
+         * other vendor's product id and adjust their stock (or read their
+         * movement history). Now we also verify the caller owns the product
+         * being targeted.
+         *
+         * Uses the inventory addon's Authorization helper when available (same
+         * helper the sibling /inventory/adjust route uses, so behavior stays
+         * consistent across endpoints). When the addon isn't loaded the IDOR
+         * surface doesn't exist either — multi-vendor needs inventory — but we
+         * fall back to a direct post_author check to be safe.
+         */
+        public function rest_stock_permission(\WP_REST_Request $request): bool
+        {
+        }
+        public function rest_stock_adjust(\WP_REST_Request $request)
+        {
+        }
+        public function rest_stock_movements(\WP_REST_Request $request)
+        {
+        }
         public function extend_product_rest_response($item, $post, $request)
+        {
+        }
+        public static function build_stock_payload($entity, bool $expose_inventory = false): array
         {
         }
         public function save_product_data(\WP_Post $post, \WP_REST_Request $request, bool $creating)
         {
         }
         public function save_attributes(\WP_Post $post, \WP_REST_Request $request)
+        {
+        }
+        private function save_stock_fields(\WP_Post $post, \WP_REST_Request $request)
         {
         }
         private function save_variation_data(\StoreEngine\Classes\Variation $variation, int $product_id, array $data)
@@ -17910,7 +19512,7 @@ namespace StoreEngine\Classes {
     {
         protected int $id;
         protected array $data = ['post_author' => 0, 'post_parent' => 0, 'post_date' => '', 'post_date_gmt' => '', 'post_content' => '', 'post_title' => '', 'post_excerpt' => '', 'post_type' => 'storeengine_product', 'post_status' => 'publish', 'comment_status' => '', 'ping_status' => '', 'post_name' => '', 'post_modified' => '', 'post_modified_gmt' => '', 'comment_count' => 0];
-        protected array $meta_data = ['product_hide' => false, 'product_type' => 'simple', 'product_shipping_type' => 'digital', 'product_digital_auto_complete' => true, 'product_physical_weight' => '', 'product_physical_weight_unit' => '', 'product_physical_length' => '', 'product_physical_width' => '', 'product_physical_height' => '', 'product_physical_dimension_unit' => '', 'product_gallery_ids' => [], 'product_downloadable_files' => [], 'product_attributes_order' => [], 'product_tax_status' => \StoreEngine\Classes\enums\ProductTaxStatus::TAXABLE, 'product_tax_class' => '', 'upsell_ids' => [], 'crosssell_ids' => [], 'product_purchase_redirect_type' => \StoreEngine\Classes\enums\PurchaseRedirectType::DEFAULT, 'product_purchase_redirect_url' => ''];
+        protected array $meta_data = ['product_hide' => false, 'product_type' => 'simple', 'product_shipping_type' => 'digital', 'product_digital_auto_complete' => true, 'product_physical_weight' => '', 'product_physical_weight_unit' => '', 'product_physical_length' => '', 'product_physical_width' => '', 'product_physical_height' => '', 'product_physical_dimension_unit' => '', 'product_gallery_ids' => [], 'product_downloadable_files' => [], 'product_attributes_order' => [], 'product_tax_status' => \StoreEngine\Classes\enums\ProductTaxStatus::TAXABLE, 'product_tax_class' => '', 'upsell_ids' => [], 'crosssell_ids' => [], 'product_purchase_redirect_type' => \StoreEngine\Classes\enums\PurchaseRedirectType::DEFAULT, 'product_purchase_redirect_url' => '', 'manage_stock' => false, 'stock_quantity' => null, 'stock_status' => 'instock', 'backorders' => 'no', 'low_stock_threshold' => null, 'sold_individually' => false, 'cost_price' => null, 'barcode' => null];
         protected array $serialized_data = ['product_gallery_ids', 'product_downloadable_files', 'product_attributes_order', 'upsell_ids', 'crosssell_ids'];
         protected array $new_data = [];
         protected array $new_meta_data = [];
@@ -18056,7 +19658,61 @@ namespace StoreEngine\Classes {
         public function get_attributes(): array
         {
         }
+        public function manages_stock(): bool
+        {
+        }
+        public function get_stock_quantity(string $context = 'view'): ?int
+        {
+        }
+        public function set_stock_quantity(?int $qty): void
+        {
+        }
+        public function get_stock_status(): string
+        {
+        }
+        public function set_stock_status(string $status): void
+        {
+        }
+        public function get_backorders(): string
+        {
+        }
+        public function backorders_allowed(): bool
+        {
+        }
+        public function backorders_require_notification(): bool
+        {
+        }
+        public function get_low_stock_threshold(): ?int
+        {
+        }
+        public function is_sold_individually(): bool
+        {
+        }
+        public function get_reserved_stock(?int $variation_id = null): int
+        {
+        }
+        public function get_available_stock_quantity(?int $variation_id = null): ?int
+        {
+        }
+        public function has_enough_stock(int $qty): bool
+        {
+        }
+        public function is_low_stock(): bool
+        {
+        }
         public function is_in_stock(): bool
+        {
+        }
+        public function is_on_backorder(int $qty_in_cart = 0): bool
+        {
+        }
+        public function reduce_stock(int $qty, ?int $variation_id = null): int
+        {
+        }
+        public function increase_stock(int $qty, ?int $variation_id = null): int
+        {
+        }
+        protected function maybe_sync_stock_status_from_quantity(int $new_qty, int $old_qty): void
         {
         }
         /**
@@ -18440,6 +20096,36 @@ namespace StoreEngine\Classes\Cache {
 }
 namespace StoreEngine\Classes {
     /**
+     * Canonical role → capability matrix for the StoreEngine ecosystem.
+     *
+     * Single source of truth used by Role classes (so caps aren't duplicated
+     * across `add_*_role()` methods) and by the one-shot migration that
+     * back-fills caps onto existing role objects when the plugin updates.
+     */
+    final class Capabilities
+    {
+        const ROLE_SHOP_MANAGER = 'storeengine_shop_manager';
+        const ROLE_CUSTOMER = 'storeengine_customer';
+        /**
+         * Caps granted to `storeengine_shop_manager`.
+         */
+        public static function shop_manager_caps(): array
+        {
+        }
+        /**
+         * Caps granted to `administrator` on top of WP defaults.
+         */
+        public static function admin_extra_caps(): array
+        {
+        }
+        /**
+         * Caps granted to `storeengine_customer`.
+         */
+        public static function customer_caps(): array
+        {
+        }
+    }
+    /**
      * CartFees class.
      *
      * @see WC_Cart_Fees
@@ -18790,6 +20476,15 @@ namespace StoreEngine\Classes {
          * @return true|\WP_Error
          */
         public function add_product_to_cart(int $price_id, int $quantity = 1, int $variation_id = 0, array $variation = [], array $item_data = [])
+        {
+        }
+        /**
+         * Validate every line item against current stock. Returns a list of WP_Error
+         * objects (empty when the cart is fine).
+         *
+         * @return \WP_Error[]
+         */
+        public function check_cart_items(): array
         {
         }
         public function update_quantity(string $item_key, int $quantity = 1)
@@ -21845,6 +23540,130 @@ namespace StoreEngine\Classes {
         {
         }
     }
+    class EmailLogCleanup
+    {
+        const DEFAULT_RETENTION_SENT = 90;
+        const DEFAULT_RETENTION_FAILED = 365;
+        public static function execute_cleanup()
+        {
+        }
+        public static function get_settings(): array
+        {
+        }
+        protected static function purge(string $status, int $days)
+        {
+        }
+    }
+    /**
+     * @method int|EmailLog next_result()
+     * @method array<EmailLog|int> get_results()
+     */
+    class EmailLogCollection extends \StoreEngine\Classes\AbstractCollection
+    {
+        protected string $primary_key = 'id';
+        protected string $table = 'storeengine_email_log';
+        protected string $object_type = 'email_log';
+        protected string $returnType = \StoreEngine\Classes\EmailLog::class;
+        // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase
+    }
+    class EmailLog extends \StoreEngine\Classes\AbstractEntity
+    {
+        protected string $table = 'storeengine_email_log';
+        protected string $object_type = 'email_log';
+        protected array $data = ['sent_at_gmt' => null, 'email_type' => null, 'recipient' => null, 'subject' => null, 'status' => 'queued', 'customer_id' => null, 'order_id' => null, 'related_entity_type' => null, 'related_entity_id' => null, 'error_message' => null, 'payload' => null];
+        protected array $data_format = ['sent_at_gmt' => '%s', 'email_type' => '%s', 'recipient' => '%s', 'subject' => '%s', 'status' => '%s', 'customer_id' => '%d', 'order_id' => '%d', 'related_entity_type' => '%s', 'related_entity_id' => '%d', 'error_message' => '%s', 'payload' => '%s'];
+        protected array $valid_stati = ['queued', 'sent', 'failed'];
+        public function get_sent_at_gmt(string $context = 'view')
+        {
+        }
+        public function set_sent_at_gmt($value)
+        {
+        }
+        public function get_email_type(string $context = 'view')
+        {
+        }
+        public function set_email_type($value)
+        {
+        }
+        public function get_recipient(string $context = 'view')
+        {
+        }
+        public function set_recipient($value)
+        {
+        }
+        public function get_subject(string $context = 'view')
+        {
+        }
+        public function set_subject($value)
+        {
+        }
+        public function get_status(string $context = 'view'): ?string
+        {
+        }
+        public function set_status($value)
+        {
+        }
+        public function get_customer_id(string $context = 'view'): int
+        {
+        }
+        public function set_customer_id($value)
+        {
+        }
+        public function get_order_id(string $context = 'view'): int
+        {
+        }
+        public function set_order_id($value)
+        {
+        }
+        public function get_related_entity_type(string $context = 'view')
+        {
+        }
+        public function set_related_entity_type($value)
+        {
+        }
+        public function get_related_entity_id(string $context = 'view'): int
+        {
+        }
+        public function set_related_entity_id($value)
+        {
+        }
+        public function get_error_message(string $context = 'view')
+        {
+        }
+        public function set_error_message($value)
+        {
+        }
+        /**
+         * Raw JSON column accessor. Exists so AbstractEntity::prepare_for_db()
+         * can preserve the existing value across update() calls — without this
+         * getter, prepare_for_db falls back to `$raw_data['payload'] ?? null`
+         * when 'payload' isn't in the change set, nulling out the column.
+         */
+        public function get_payload(string $context = 'view'): ?string
+        {
+        }
+        /**
+         * Return the meta JSON column as a decoded array.
+         *
+         * Sender-side context (headers list, attachment names, the source class
+         * that called wp_mail, resent_from_log_id, etc.) lives here. Decoupled
+         * from get_meta_data() on AbstractEntity which manages WP-style metadata
+         * tables we don't have for this entity.
+         */
+        public function get_meta_payload(): array
+        {
+        }
+        public function set_meta_payload(array $value)
+        {
+        }
+        /**
+         * Merge an associative array into the existing meta payload.
+         * Used by the resend flow to tag the new row with provenance.
+         */
+        public function merge_meta_payload(array $value)
+        {
+        }
+    }
 }
 namespace StoreEngine\Classes\enums {
     class OrderItemType
@@ -23909,13 +25728,52 @@ namespace StoreEngine\Classes\Order {
         {
         }
         /**
-         * Get price.
+         * Get the product's **snapshot reference price** at the time the order
+         * was placed. Useful for receipts, invoices, emails, exports, and any
+         * UI that says "you originally paid $X each".
+         *
+         * **Do NOT use this to compute the amount to charge** through a payment
+         * gateway. Use {@see self::get_charge_unit_price()} or
+         * `$order->get_total()` instead — those reflect coupons, discounts,
+         * and downstream rewrites (e.g. installment-plan sub-orders, where
+         * `price` keeps the full product price but `total` carries the
+         * per-installment fraction). Charging on `price` over-charges those
+         * customers.
          *
          * @param string $context What the value is for. Valid values are 'view' and 'edit'.
          *
          * @return string|float
          */
         public function get_price(string $context = 'view')
+        {
+        }
+        /**
+         * Per-unit amount to charge for this line — the value gateways MUST
+         * use when building itemized payment payloads.
+         *
+         * Derived from `total / quantity` so the result honors:
+         *   - Coupons / line-level discounts
+         *   - Installment-plan sub-orders (line `total` is the installment
+         *     fraction, while `price` keeps the original product price for
+         *     receipt continuity)
+         *   - Any other post-build adjustment the order pipeline applies
+         *
+         * Zero-or-empty `total` (free items, lines that haven't been totalled
+         * yet) falls back to {@see self::get_price()} so the value is always
+         * defined.
+         *
+         * Gateway implementations that pass a single grand-total to their
+         * provider can use `$order->get_total()` instead — same arithmetic
+         * outcome. This helper is for itemized gateways where the gateway
+         * does NOT handle its own discount engine.
+         *
+         * **Discount-aware gateways (e.g. Paddle's `discount_id`) must NOT
+         * use this helper.** They should send `get_subtotal() / quantity`
+         * (pre-coupon) so the gateway applies the discount exactly once. If
+         * we sent `total / qty` AND a discount_id, the coupon would apply
+         * twice on the provider side.
+         */
+        public function get_charge_unit_price(string $context = 'view'): float
         {
         }
         /**
@@ -24735,6 +26593,68 @@ namespace StoreEngine\Classes\PaymentTokens {
 }
 namespace StoreEngine\Classes {
     /**
+     * CRUD + migration for the unified `wp_storeengine_payouts` ledger.
+     *
+     * Each addon writes through this repository with a `payee_type`
+     * discriminator (`affiliate`, `vendor`, …). Reads filter on the same
+     * column via the (payee_type, payee_id) index.
+     */
+    final class PayoutsRepository
+    {
+        const TYPE_AFFILIATE = 'affiliate';
+        const TYPE_VENDOR = 'vendor';
+        const MIGRATION_OPTION = 'storeengine_payouts_migration_v1';
+        const STATUS_PENDING = 'pending';
+        const STATUS_PROCESSING = 'processing';
+        const STATUS_PAID = 'paid';
+        const STATUS_FAILED = 'failed';
+        const STATUS_CANCELLED = 'cancelled';
+        public static function table(): string
+        {
+        }
+        /**
+         * @return int Inserted payout id, or 0 on failure.
+         */
+        public static function create(string $payee_type, int $payee_id, array $data): int
+        {
+        }
+        public static function update(int $id, array $data): bool
+        {
+        }
+        public static function get(int $id): ?object
+        {
+        }
+        /**
+         * @param array $filters status, search, per_page, page, count
+         */
+        public static function find_for(string $payee_type, int $payee_id = 0, array $filters = []): array
+        {
+        }
+        /**
+         * Delete a payout — used by the "rollback" admin action only.
+         */
+        public static function delete(int $id): bool
+        {
+        }
+        /**
+         * One-shot copy of legacy `wp_affiliate_payouts` and `wp_vendor_payouts`
+         * (and their accidental `storeengine_*` siblings, if present) into the
+         * unified ledger. Idempotent via `storeengine_payouts_migration_v1`.
+         */
+        public static function migrate_legacy_tables(): void
+        {
+        }
+        protected static function table_exists(string $table): bool
+        {
+        }
+        protected static function normalize_payment_method(string $raw): string
+        {
+        }
+        protected static function map_legacy_status(string $raw): string
+        {
+        }
+    }
+    /**
      * @method array<Price> get_results()
      * @method Price next_result()
      */
@@ -25199,9 +27119,48 @@ namespace StoreEngine\Classes\Product {
         {
         }
         /**
+         * Variants that should appear in the storefront picker + JS data feed.
+         *
+         * A variant counts as "available" when EITHER:
+         *   - its own `price` column is set (the per-variant increment), OR
+         *   - it carries a `_pricing_id` meta pointing at a price tier on
+         *     the parent product.
+         *
+         * Either is enough for the variant to be sellable — the cart resolves
+         * the final price downstream. Rows with neither are considered
+         * misconfigured and stay hidden.
+         *
+         * Stock status is NOT checked here; out-of-stock variants still need
+         * to be rendered so the customer can see them and (with the
+         * back-in-stock addon active) subscribe for restock alerts. The
+         * frontend gates Add-to-Cart based on the per-variant `is_in_stock`
+         * value published in the JS feed.
+         *
          * @return \StoreEngine\Classes\Variation[]
          */
         public function get_available_variants(): array
+        {
+        }
+        /**
+         * Returns true if any variation manages stock — in which case parent-level
+         * stock fields are ignored and stock is sourced from the variations.
+         */
+        public function any_variant_manages_stock(): bool
+        {
+        }
+        public function manages_stock(): bool
+        {
+        }
+        public function is_in_stock(): bool
+        {
+        }
+        public function is_low_stock(): bool
+        {
+        }
+        public function get_stock_status(): string
+        {
+        }
+        public function get_aggregate_stock_quantity(): ?int
         {
         }
     }
@@ -25355,10 +27314,25 @@ namespace StoreEngine\Classes {
     }
     class Role
     {
+        const MIGRATION_OPTION = 'storeengine_role_migration_v2';
         public static function add_customer_role()
         {
         }
         public static function add_shop_manager_role()
+        {
+        }
+        public static function remove_customer_role(): void
+        {
+        }
+        public static function remove_shop_manager_role(): void
+        {
+        }
+        /**
+         * One-shot back-fill that adds newly-introduced caps to the existing
+         * shop_manager and administrator role objects on plugin update. Idempotent
+         * via the `storeengine_role_migration_v2` option flag.
+         */
+        public static function migrate_caps_v2(): void
         {
         }
     }
@@ -25613,6 +27587,125 @@ namespace StoreEngine\Classes\Order {
     }
 }
 namespace StoreEngine\Classes {
+    /**
+     * SKU + Barcode bulk generation.
+     *
+     * Used by the React variant-matrix UI and by CSV import to produce stable,
+     * human-readable, collision-free codes from product slug + variation
+     * attribute slugs.
+     */
+    class SkuGenerator
+    {
+        /**
+         * Build a deterministic SKU from a base + attribute slugs.
+         *
+         *   base="tshirt-noir", parts=["black","m"] → "TSHIRT-NOIR-BLACK-M"
+         */
+        public static function build(string $base, array $parts): string
+        {
+        }
+        /**
+         * Build a SKU and append a numeric suffix until it is unique within
+         * storeengine_product_variations and the post-meta SKU column for simple
+         * products.
+         */
+        public static function build_unique(string $base, array $parts): string
+        {
+        }
+        public static function sku_exists(string $sku): bool
+        {
+        }
+        /**
+         * Generate a numeric EAN-13 candidate. Not a registered prefix, intended
+         * for in-house labelling only — replace with vendor-supplied codes for
+         * retail distribution.
+         */
+        public static function make_internal_barcode(int $variation_id): string
+        {
+        }
+        protected static function ean13_check_digit(string $base12): string
+        {
+        }
+        protected static function normalize(string $part): string
+        {
+        }
+    }
+    class StockManager
+    {
+        public const TYPE_SALE = 'sale';
+        public const TYPE_RESTOCK = 'restock';
+        public const TYPE_MANUAL = 'manual';
+        public const TYPE_RETURN = 'return';
+        public const TYPE_DAMAGED = 'damaged';
+        public const TYPE_RECEIVED = 'received';
+        public const TYPE_CORRECTION = 'correction';
+        public static function init()
+        {
+        }
+        public static function schedule_sweeper()
+        {
+        }
+        public static function send_low_stock_digest(): void
+        {
+        }
+        public static function on_payment_complete(int $order_id)
+        {
+        }
+        public static function on_status_changed($order_id, $status_from, $status_to, $order = null)
+        {
+        }
+        public static function maybe_reduce_stock_levels(int $order_id): void
+        {
+        }
+        public static function maybe_restore_stock_levels(int $order_id): void
+        {
+        }
+        /**
+         * Apply a manual stock adjustment + log a movement.
+         *
+         * @param int    $product_id
+         * @param int    $variation_id 0 if simple product
+         * @param string $action       add | remove | set
+         * @param int    $qty          positive integer
+         * @param string $reason       received | damaged | return | correction | manual | other
+         * @param string $note         optional free-text note
+         *
+         * @return array{ok:bool, qty_before:?int, qty_after:?int, message?:string}
+         */
+        public static function adjust_stock(int $product_id, int $variation_id, string $action, int $qty, string $reason = 'manual', string $note = ''): array
+        {
+        }
+        protected static function compute_new_qty(string $action, int $qty, int $current): int
+        {
+        }
+        protected static function derive_stock_status(int $qty, string $backorders): string
+        {
+        }
+        public static function record_movement(array $args): int
+        {
+        }
+        public static function get_movements(int $product_id, int $variation_id = 0, int $limit = 50, int $offset = 0): array
+        {
+        }
+        /**
+         * Filterable movement query used by the inventory-pro addon.
+         *
+         * @param array{product_id?:int,variation_id?:int,location_id?:int,type?:string,from?:string,to?:string,limit?:int,offset?:int} $args
+         * @return array<int,object>
+         */
+        public static function query_movements(array $args): array
+        {
+        }
+        public static function reserve_stock_for_order(int $order_id, array $items, int $minutes = 60): void
+        {
+        }
+        public static function release_reserved_stock(int $order_id): void
+        {
+        }
+        public static function release_expired_reservations(): void
+        {
+        }
+    }
     /**
      * WP_Error compatible exception.
      *
@@ -26502,8 +28595,9 @@ namespace StoreEngine\Classes {
         protected int $id;
         protected string $table;
         protected string $name = '';
-        protected array $data = ['sku' => '', 'product_id' => '', 'price' => null];
+        protected array $data = ['sku' => '', 'barcode' => null, 'product_id' => '', 'price' => null, 'cost_price' => null, 'manage_stock' => 0, 'stock_quantity' => null, 'stock_status' => 'instock', 'backorders' => 'no', 'low_stock_threshold' => null];
         protected array $new_data = [];
+        protected array $data_format = ['sku' => '%s', 'barcode' => '%s', 'product_id' => '%d', 'price' => '%f', 'cost_price' => '%f', 'manage_stock' => '%d', 'stock_quantity' => '%d', 'stock_status' => '%s', 'backorders' => '%s', 'low_stock_threshold' => '%d'];
         protected array $meta_data = [];
         protected array $json_meta = [];
         protected array $add_meta_data = [];
@@ -26582,6 +28676,18 @@ namespace StoreEngine\Classes {
         public function set_sku(string $value)
         {
         }
+        public function get_barcode(): ?string
+        {
+        }
+        public function set_barcode(?string $value): void
+        {
+        }
+        public function get_cost_price(): ?float
+        {
+        }
+        public function set_cost_price(?float $value): void
+        {
+        }
         /**
          * @param float|null $value
          *
@@ -26621,6 +28727,77 @@ namespace StoreEngine\Classes {
         {
         }
         protected function set_prop_metadata(string $name, $value)
+        {
+        }
+        public function manages_stock(): bool
+        {
+        }
+        public function set_manage_stock(bool $value): void
+        {
+        }
+        public function get_stock_quantity(string $context = 'view'): ?int
+        {
+        }
+        public function set_stock_quantity(?int $qty): void
+        {
+        }
+        public function get_stock_status(): string
+        {
+        }
+        public function set_stock_status(string $status): void
+        {
+        }
+        /**
+         * Stage a stock-status change to be flushed by save() — used during bulk
+         * variation persistence where we want a single DB write and a single hook
+         * fire from the caller.
+         */
+        public function new_data_set_stock_status(string $status): void
+        {
+        }
+        public function get_backorders(): string
+        {
+        }
+        public function set_backorders(string $value): void
+        {
+        }
+        public function backorders_allowed(): bool
+        {
+        }
+        public function backorders_require_notification(): bool
+        {
+        }
+        public function get_low_stock_threshold(): ?int
+        {
+        }
+        public function set_low_stock_threshold(?int $value): void
+        {
+        }
+        public function get_reserved_stock(): int
+        {
+        }
+        public function get_available_stock_quantity(): ?int
+        {
+        }
+        public function has_enough_stock(int $qty): bool
+        {
+        }
+        public function is_low_stock(): bool
+        {
+        }
+        public function is_in_stock(): bool
+        {
+        }
+        public function is_sold_individually(): bool
+        {
+        }
+        public function reduce_stock(int $qty): int
+        {
+        }
+        public function increase_stock(int $qty): int
+        {
+        }
+        protected function maybe_sync_stock_status_from_quantity(int $new_qty): void
         {
         }
     }
@@ -26778,6 +28955,17 @@ namespace StoreEngine {
         protected function __construct()
         {
         }
+        const SCHEMA_HASH_OPTION = 'storeengine_schema_hash';
+        /**
+         * Re-runs dbDelta when any schema file in includes/database/ changes.
+         * Avoids the need to bump STOREENGINE_DB_VERSION on every column addition.
+         */
+        public static function maybe_sync_schema(): void
+        {
+        }
+        public static function compute_schema_hash(string $dir): string
+        {
+        }
         public function maybe_flush_rewrite_rules()
         {
         }
@@ -26791,6 +28979,22 @@ namespace StoreEngine {
         {
         }
         public static function create_initial_custom_table()
+        {
+        }
+        /**
+         * Adds the stock-tracking columns to wp_storeengine_product_variations on
+         * installs that pre-date the inventory feature. Idempotent — silently
+         * skips columns that already exist.
+         */
+        public static function ensure_variation_stock_columns(): void
+        {
+        }
+        /**
+         * Adds the `vendor_id` column to wp_storeengine_stock_movements on
+         * installs that pre-date the multi-vendor scoping feature, then back-fills
+         * existing rows from the product's post_author. Idempotent.
+         */
+        public static function ensure_stock_movements_vendor_column(): void
         {
         }
         public function register_product_post_type()
@@ -26845,6 +29049,12 @@ namespace StoreEngine\Database {
         }
     }
     class CreateDownloadableProductPermissions
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
+    class CreateEmailLog
     {
         public static function up($prefix, $charset_collate)
         {
@@ -26920,6 +29130,18 @@ namespace StoreEngine\Database {
         {
         }
     }
+    /**
+     * Unified payouts ledger — used by every addon that pays a person
+     * (affiliates, vendors, future supplier reimbursements, instructors, …).
+     * The `payee_type` discriminator + `payee_id` column lets each addon
+     * read/write its own slice without needing its own table.
+     */
+    class CreatePayouts
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
     class CreateProductDownloadDirectories
     {
         public static function up($prefix, $charset_collate)
@@ -26944,6 +29166,12 @@ namespace StoreEngine\Database {
         {
         }
     }
+    class CreateReservedStockTable
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
     class CreateSessions
     {
         public static function up($prefix, $charset_collate)
@@ -26963,6 +29191,12 @@ namespace StoreEngine\Database {
         }
     }
     class CreateShippingZones
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
+    class CreateStockMovementsTable
     {
         public static function up($prefix, $charset_collate)
         {
@@ -27981,6 +30215,15 @@ namespace StoreEngine {
         public function migrate_1_8_0($storeengine_version)
         {
         }
+        /**
+         * Create the storeengine_email_log table that the customer-communication
+         * audit (EmailLogger) writes into. dbDelta is idempotent so re-running on
+         * an existing install is safe; the version gate keeps it from firing on
+         * every page load.
+         */
+        public function migrate_1_10_0($storeengine_version)
+        {
+        }
         // phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.SlowDBQuery.slow_db_query_meta_value, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.SlowDBQuery.slow_db_query_meta_key
     }
     class Miscellaneous
@@ -28730,6 +30973,29 @@ namespace StoreEngine\Post {
         {
         }
         public function change_password($payload)
+        {
+        }
+        /**
+         * Persist the customer's email-notification opt-ins as user_meta. Read
+         * at email send-time via Helper::should_send_notification(). Order-status
+         * is intentionally not in the form — it's transactional and always on.
+         */
+        public function save_notifications($payload)
+        {
+        }
+        /**
+         * Trigger WP core's privacy export flow for the current user. WP sends
+         * a confirmation email; once the user confirms, WP cron generates the
+         * ZIP and emails the download link. We don't reimplement any of that.
+         */
+        public function request_data_export($payload)
+        {
+        }
+        /**
+         * Trigger WP core's account erasure flow. Same shape as the export —
+         * WP handles the confirmation email + cron-driven erasure.
+         */
+        public function request_account_erasure($payload)
         {
         }
         /**
@@ -30556,11 +32822,20 @@ namespace StoreEngine\Utils {
         const SETTING = 'checkout_fields';
         /**
          * Schema for every supported field. Defines:
-         *   - id            settings key
-         *   - payload_key   key used in the place_order POST/REST payload
-         *   - group         contact|billing|shipping
-         *   - label         translated label
-         *   - system        true → user can't disable; always required
+         *   - id                settings key
+         *   - payload_key       key used in the place_order POST/REST payload
+         *   - group             contact|billing|shipping
+         *   - label             translated label
+         *   - system            true → user can't disable; always required
+         *   - default_enabled   default enabled state when admin hasn't configured this field
+         *   - default_required  default required state when admin hasn't configured this field
+         *
+         * System fields are always enabled & required regardless of defaults below.
+         * Non-system fields fall back to these defaults when the admin hasn't saved a
+         * preference yet — without this, every non-system field would silently default
+         * to disabled, causing Address line 2 / State / Postcode / Phone to vanish
+         * from the rendered form (which also breaks shipping calc because
+         * has_full_shipping_address() requires state + postcode to be present).
          */
         public static function schema(): array
         {
@@ -32376,6 +34651,23 @@ namespace StoreEngine\Utils {
         public static function get_settings($key, $default = null)
         {
         }
+        /**
+         * Resolve a per-user notification preference for the email-sending code.
+         *
+         * Stored as user_meta `_storeengine_notif_{key}`. Default is opt-in
+         * (returns true when the meta key has never been set), so existing
+         * customers keep receiving emails after this feature ships.
+         *
+         * Order-status emails are transactional (receipts, shipping updates) and
+         * always return true — the Notifications UI greys that toggle out, but
+         * defence-in-depth here in case anyone POSTs the form directly.
+         *
+         * @param int    $user_id WP user id.
+         * @param string $key     Notification key, e.g. `marketing`, `vendor_new_order`.
+         */
+        public static function should_send_notification(int $user_id, string $key): bool
+        {
+        }
         public static function get_shop_address(): string
         {
         }
@@ -32389,11 +34681,43 @@ namespace StoreEngine\Utils {
         {
         }
         /**
+         * Group definitions for the frontend dashboard sidebar.
+         *
+         * Each group renders a non-clickable header before its first visible
+         * member. Items set `'group' => '<key>'` to opt in; ungrouped items
+         * sort by their own priority and render without a header.
+         *
+         * Group priority controls inter-group ordering; item priority controls
+         * order within a group.
+         *
+         * @return array<string,array{label:string,priority:int}>
+         */
+        public static function get_frontend_dashboard_menu_groups(): array
+        {
+        }
+        /**
+         * Sort menu items by (group, item priority) and inject a separator entry
+         * before the first visible member of each labelled group. Headers are
+         * skipped for groups that have no visible items, and for items already
+         * acting as a manual separator (e.g. the vendor section break).
+         *
+         * This is invoked once by the sidebar renderer — other consumers
+         * (rewrite rules, request handler, REST exposure) keep working with
+         * the raw item list.
+         *
+         * @param array $items
+         * @return array
+         */
+        public static function apply_frontend_dashboard_menu_groups(array $items): array
+        {
+        }
+        /**
          * @return array<array{
          *     label: string,
          *    icon: string,
          *    public: bool,
          *    priority: int|float,
+         *    group?: string,
          *    children:array<{label: string, icon: string, public: bool, priority: int|float}>,
          *  }>
          */
@@ -33468,9 +35792,6 @@ namespace {
         {
         }
         public function load_addons()
-        {
-        }
-        public function load_textdomain()
         {
         }
         /**
