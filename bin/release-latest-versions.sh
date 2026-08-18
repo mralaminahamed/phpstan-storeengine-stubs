@@ -1,169 +1,135 @@
 #!/usr/bin/env bash
 #
-# Generate StoreEngine stubs for the latest versions.
+# Release stubs for every upstream version newer than this repository's newest
+# tag.
 #
-# This script:
-# 1. Fetches the latest StoreEngine versions from WordPress.org
-# 2. Updates the project with the remote branch
-# 3. Processes only the versions that haven't been tagged yet
-# 4. Generates stubs for each new version
+# Forward-only by design: versions at or below the newest existing tag are
+# history we deliberately leave alone, so a run can never insert an older
+# release on top of the current one, and a repository that has fallen behind
+# does not suddenly publish its entire back catalogue.
 #
+# Nothing is pushed here. The release workflow pushes what this produces.
 
-# Exit immediately if a command exits with a non-zero status
-set -e
+set -euo pipefail
 
-# Error handling function
-function error_exit {
-    echo "ERROR: $1" >&2
-    exit 1
-}
+# --- per-repository configuration -------------------------------------------
+PLUGIN_SLUG="storeengine"
+DISPLAY_NAME="StoreEngine"
+VERSIONS_FILE_NAME="storeengine_versions.txt"
+BRANCH_NAME="main"
+# ----------------------------------------------------------------------------
 
-# Command existence check
-function check_command {
-    command -v "$1" >/dev/null 2>&1 || error_exit "Required command '$1' not found"
-}
-
-# Progress output function
-function log_step {
-    echo "==> $1"
-}
-
-# Check if a command succeeded
-function check_result {
-    if [ $? -ne 0 ]; then
-        error_exit "$1"
-    fi
-}
-
-# Initialize variables
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-OUTPUT_FILE="$ROOT_DIR/storeengine_versions.txt"
-PLUGIN_NAME="storeengine"
-PLUGIN_API_URL="https://api.wordpress.org/plugins/info/1.0/storeengine.json"
 SOURCE_DIR="$ROOT_DIR/source"
 GENERATE_SCRIPT="$SCRIPT_DIR/generate.sh"
-BRANCH_NAME="main"
+VERSIONS_FILE="$ROOT_DIR/$VERSIONS_FILE_NAME"
+PLUGIN_API_URL="https://api.wordpress.org/plugins/info/1.0/${PLUGIN_SLUG}.json"
 
-# Check required commands
-log_step "Checking required commands..."
-check_command curl
-check_command jq
-check_command unzip
-check_command git
+log()  { echo "==> $*"; }
+step() { echo "  - $*"; }
+fail() { echo "ERROR: $*" >&2; exit 1; }
 
-# Ensure the generate script is executable
-[[ -x "$GENERATE_SCRIPT" ]] || error_exit "Generate script not found or not executable: $GENERATE_SCRIPT"
+for cmd in curl jq unzip git; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "required command not found: $cmd"
+done
+[[ -f "$GENERATE_SCRIPT" ]] || fail "generate script not found: $GENERATE_SCRIPT"
 
-# Update from remote repository
-log_step "Updating from remote repository..."
-git fetch --all
-check_result "Failed to fetch from remote repository"
+# Keep source/ tidy without touching the two files that belong to the repo.
+clean_source() {
+    find "$SOURCE_DIR/" -mindepth 1 \
+        ! -name 'composer.json' ! -name '.gitignore' \
+        -exec rm -rf {} + 2>/dev/null || true
+}
 
-git reset --hard "origin/$BRANCH_NAME"
-check_result "Failed to reset to origin/$BRANCH_NAME"
+log "Fetching $DISPLAY_NAME versions from WordPress.org..."
+API_JSON="$(curl -sf "$PLUGIN_API_URL")" || fail "could not reach the WordPress.org API"
 
-# Fetch plugin information
-log_step "Fetching plugin information from WordPress.org..."
-WC_JSON="$(curl -s "$PLUGIN_API_URL")"
-check_result "Failed to fetch plugin information from WordPress.org"
-
-# Prepare output file
-log_step "Preparing versions file: $OUTPUT_FILE"
-> "$OUTPUT_FILE"
-
-# Extract and filter versions, excluding "trunk"
-log_step "Extracting versions..."
-# Stable releases only. "trunk" is not a release, a key that does not start
-# with a digit is malformed, and none of these packages has ever tagged a
-# pre-release.
-VERSIONS=$(jq -r '."versions" | keys[]' <<<"$WC_JSON" \
+# Stable releases only. "trunk" is not a release, a key that does not start with
+# a digit is malformed (dokan-lite publishes a literal "v4.1.5"), and none of
+# these packages has ever tagged a pre-release.
+ALL_VERSIONS="$(jq -r '."versions" | keys[]' <<<"$API_JSON" \
     | grep -E '^[0-9]' \
     | grep -viE '(alpha|beta|-rc|_rc|\.rc|dev)' \
-    | sort -V)
-check_result "Failed to extract versions from WordPress.org response"
+    | sort -V)"
+[[ -n "$ALL_VERSIONS" ]] || fail "no versions returned for $PLUGIN_SLUG"
 
-# Collect all versions in the output file
-log_step "Collecting versions..."
-for VERSION in $VERSIONS; do
-    echo "$VERSION" >> "$OUTPUT_FILE"
-done
+printf '%s\n' "$ALL_VERSIONS" > "$VERSIONS_FILE"
 
-# Count total versions for progress display
-TOTAL_VERSIONS=$(wc -l < "$OUTPUT_FILE")
-CURRENT_VERSION=0
-
-log_step "Found $TOTAL_VERSIONS versions"
-
-# Remove the vtrunk tag if it exists
-if git show-ref --tags | grep -q "refs/tags/vtrunk"; then
-    log_step "Removing vtrunk tag..."
-    git tag -d vtrunk
+# Forward-only: keep just what sorts strictly above the newest existing tag.
+LATEST_TAG="$(git -C "$ROOT_DIR" tag --list 'v*' | sed 's/^v//' \
+    | grep -E '^[0-9]' | sort -V | tail -1 || true)"
+if [[ -n "$LATEST_TAG" ]]; then
+    log "Newest existing tag: v$LATEST_TAG"
+    ALL_VERSIONS="$(while IFS= read -r v; do
+        if [[ "$v" != "$LATEST_TAG" ]] &&
+           [[ "$(printf '%s\n%s\n' "$LATEST_TAG" "$v" | sort -V | tail -1)" == "$v" ]]; then
+            echo "$v"
+        fi
+    done <<<"$ALL_VERSIONS" || true)"
+else
+    log "No tags yet; releasing the newest upstream version only."
+    ALL_VERSIONS="$(tail -1 <<<"$ALL_VERSIONS")"
 fi
 
-# Process each version
+PENDING="$(grep -v '^$' <<<"$ALL_VERSIONS" || true)"
+if [[ -z "$PENDING" ]]; then
+    log "Already up to date, nothing to release."
+    exit 0
+fi
+
+TOTAL="$(grep -c '' <<<"$PENDING")"
+log "$TOTAL version(s) to release: $(tr '\n' ' ' <<<"$PENDING")"
+
+RELEASED=0
+SKIPPED=0
+N=0
 while IFS= read -r VERSION; do
-    CURRENT_VERSION=$((CURRENT_VERSION + 1))
-    log_step "[$CURRENT_VERSION/$TOTAL_VERSIONS] Processing version ${VERSION}..."
+    N=$((N + 1))
+    log "[$N/$TOTAL] $DISPLAY_NAME $VERSION"
 
-    # Check if the tag already exists
-    if git rev-parse "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-        echo "  - Tag exists for version ${VERSION}, skipping."
+    clean_source
+
+    ZIP="$SOURCE_DIR/${PLUGIN_SLUG}.${VERSION}.zip"
+    step "downloading..."
+    if ! curl -sfL -o "$ZIP" "https://downloads.wordpress.org/plugin/${PLUGIN_SLUG}.${VERSION}.zip"; then
+        step "download failed, skipping"
+        SKIPPED=$((SKIPPED + 1))
         continue
     fi
 
-    # Clean up source directory, keeping composer.json and .gitignore
-    echo "  - Cleaning up source directory..."
-    find "$SOURCE_DIR/" -mindepth 1 ! -name 'composer.json' ! -name '.gitignore' -exec rm -rf {} + 2>/dev/null || true
-
-    # Download the new version
-    DOWNLOAD_URL="https://downloads.wordpress.org/plugin/$PLUGIN_NAME.${VERSION}.zip"
-    DOWNLOAD_PATH="$SOURCE_DIR/${PLUGIN_NAME}.${VERSION}.zip"
-
-    echo "  - Downloading version ${VERSION}..."
-    if ! curl -s -L -o "$DOWNLOAD_PATH" "$DOWNLOAD_URL"; then
-        echo "  - Failed to download version ${VERSION}, skipping."
+    step "extracting..."
+    if ! unzip -q -d "$SOURCE_DIR/" "$ZIP"; then
+        step "extract failed, skipping"
+        rm -f "$ZIP"
+        SKIPPED=$((SKIPPED + 1))
         continue
     fi
+    rm -f "$ZIP"
 
-    # Extract plugin files
-    echo "  - Extracting plugin files..."
-    if ! unzip -q -d "$SOURCE_DIR/" "$DOWNLOAD_PATH"; then
-        echo "  - Failed to extract version ${VERSION}, skipping."
-        rm -f "$DOWNLOAD_PATH"
-        continue
-    fi
-
-    # Generate stubs
-    echo "  - Generating stubs..."
-    if ! "$GENERATE_SCRIPT"; then
-        echo "  - Failed to generate stubs for version ${VERSION}, skipping."
-        find "$SOURCE_DIR/" -mindepth 1 ! -name 'composer.json' ! -name '.gitignore' -exec rm -rf {} + 2>/dev/null || true
+    # The finder configs use paths relative to the repository root.
+    step "generating stubs..."
+    if ! (cd "$ROOT_DIR" && bash "$GENERATE_SCRIPT"); then
+        step "stub generation failed, skipping"
+        clean_source
+        SKIPPED=$((SKIPPED + 1))
         continue
     fi
 
     # Stage first, then inspect the index: a stub file that does not exist yet
     # is untracked, and an unstaged check would not notice it.
-    git add -A
-    if git diff --cached --quiet; then
-        echo "  - No changes to commit for version ${VERSION}, skipping tag."
+    git -C "$ROOT_DIR" add -A -- . ':(exclude)source' || fail "git add failed"
+
+    if git -C "$ROOT_DIR" diff --cached --quiet; then
+        step "identical to the previous version, no tag"
     else
-        # Commit and tag the new version
-        echo "  - Committing and tagging version ${VERSION}..."
-        git commit -m "Generate stubs for StoreEngine ${VERSION}"
-        git tag "v${VERSION}"
+        git -C "$ROOT_DIR" commit -q -m "Generate stubs for $DISPLAY_NAME $VERSION"
+        git -C "$ROOT_DIR" tag "v${VERSION}"
+        step "tagged v${VERSION}"
+        RELEASED=$((RELEASED + 1))
     fi
 
-    # Clean up the source directory
-    echo "  - Cleaning up temporary files..."
-    find "$SOURCE_DIR/" -mindepth 1 ! -name 'composer.json' ! -name '.gitignore' -exec rm -rf {} + 2>/dev/null || true
-done < "$OUTPUT_FILE"
+    clean_source
+done <<<"$PENDING"
 
-log_step "All versions processed successfully."
-log_step "Generated stubs for $(git tag | wc -l) versions total, including $(git tag | grep -c "^v$VERSION" || echo "0") new."
-
-# Optional: Push changes to remote
-echo
-echo "Run the following commands to push changes:"
-echo "  git push origin $BRANCH_NAME"
-echo "  git push --tags"
+log "Done: $RELEASED released, $SKIPPED skipped."
