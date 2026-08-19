@@ -3,3 +3,7 @@
 /report.txt
 .DS_Store
 .DS_Store
+
+# PHPUnit
+.phpunit.result.cache
+coverage/
