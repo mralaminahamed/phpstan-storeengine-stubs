@@ -1,0 +1,81 @@
+name: Upstream check
+
+# The failure a stubs package actually has is staleness: the plugin ships a new release, this package
+# does not, and nobody finds out until a consumer's static analysis reports a symbol that should
+# exist. Nothing here looks broken in the meantime, which is why it needs a schedule rather than a
+# reviewer.
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compare the latest release against the latest tag
+        id: compare
+        run: |
+          set -euo pipefail
+
+          latest="$(
+            curl -fsSL "https://api.wordpress.org/plugins/info/1.0/storeengine.json" \
+              | php -r 'echo json_decode(file_get_contents("php://stdin"), true)["version"] ?? "";'
+          )"
+
+          tagged="$(git tag --sort=-v:refname | head -n1 | sed 's/^v//')"
+
+          # Validated before either value goes near a later step. One comes from a public API and the
+          # other from a tag, and a version string is the only shape that should reach an issue body.
+          for v in "$latest" "$tagged"; do
+            if ! printf '%s' "$v" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
+              echo "ERROR: refusing to act on a version that is not numeric: '$v'" >&2
+              exit 1
+            fi
+          done
+
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "tagged=$tagged" >> "$GITHUB_OUTPUT"
+          echo "stale=$( [ "$latest" = "$tagged" ] && echo false || echo true )" >> "$GITHUB_OUTPUT"
+
+          echo "tagged $tagged, latest $latest"
+
+      - name: Open an issue when a newer release exists
+        if: steps.compare.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          TAGGED: ${{ steps.compare.outputs.tagged }}
+        run: |
+          set -euo pipefail
+
+          title="storeengine ${LATEST} is out (stubs tagged ${TAGGED})"
+
+          # Reuse an open issue rather than filing one every Monday until somebody acts.
+          if gh issue list --state open --search "$title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "already reported"
+            exit 0
+          fi
+
+          gh issue create \
+            --title "$title" \
+            --body "$(printf '%s\n' \
+              "WordPress.org lists **${LATEST}**; the newest tag here is **${TAGGED}**." \
+              "" \
+              "Regenerate and release:" \
+              "" \
+              '```bash' \
+              "composer release" \
+              '```' \
+            )"
