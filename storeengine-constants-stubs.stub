@@ -5,3 +5,4 @@
  * @see https://github.com/mralaminahamed/phpstan-storeengine-stubs
  */
 
+\define('STOREENGINE_CHECKOUT', \true);
