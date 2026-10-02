@@ -3726,6 +3726,15 @@ namespace StoreEngine\Addons\Email\Admin {
         protected static function inject_content_tree_defaults(array $data): array
         {
         }
+        /**
+         * The "New user notification" body shipped before usernames and the
+         * set-password link were included. A store still on it (never edited) is
+         * moved to the current default; a customised body is left alone.
+         */
+        const PREVIOUS_NEW_USER_CONTENT = '<p>Hi <strong>{user_first_name} </strong>,<p>Your account has been created for faster checkout and order tracking.<p><strong>Email: </strong>{user_email}<p><strong>Password: </strong>{user_password}<p><strong>Login URL: </strong>{sign_in_url}<p><p><strong>Security note: </strong>This password is temporary. Please change it immediately after signing in. If you didn\'t create this account, contact us at <a href=mailto:support@store.example.com rel="noopener noreferrer" target=_blank>support@store.example.com </a>.<p>If you have questions or require more information, feel free to reach out.';
+        protected static function migrate_new_user_credentials_content(array $data): array
+        {
+        }
         public static function save_settings($form_data = false)
         {
         }
@@ -4313,6 +4322,23 @@ namespace StoreEngine\Addons\Email\order {
         {
         }
         public function send_mail(int $user_id, array $userdata)
+        {
+        }
+        /**
+         * This email's settings, falling back to the shipped default when the store
+         * never saved the Email settings (otherwise a brand-new store never sends
+         * new customers their login details). Read at send time, after init.
+         *
+         * @return array|false
+         */
+        private function customer_settings()
+        {
+        }
+        /**
+         * One-time link to the account's "set a new password" form (same flow as
+         * a password reset; expires per WordPress's password_reset_expiration).
+         */
+        private function get_set_password_url(\WP_User $user): string
         {
         }
         private function get_email_subject(int $user_id)
@@ -8120,6 +8146,9 @@ namespace StoreEngine\Addons\MultiCurrency\Classes {
         {
         }
         public function dispatch_currency_switcher(): void
+        {
+        }
+        public function render_shortcode_in_block_content(string $block_content): string
         {
         }
         /**
@@ -15442,7 +15471,7 @@ namespace StoreEngine\Addons\Stripe {
          *
          * @return ?\StoreEngine\Stripe\Customer
          */
-        public function get_existing_customer(string $email, string $name): ?\StoreEngine\Stripe\Customer
+        public function get_existing_customer(string $email = '', string $name = ''): ?\StoreEngine\Stripe\Customer
         {
         }
         /**
@@ -19982,6 +20011,71 @@ namespace StoreEngine\Addons\Stripe {
         {
         }
     }
+    class SubscriptionPaymentMethod
+    {
+        /**
+         * Stripe API wrapper. Needs get_payment_method( string, bool ) and update_subscription( string, array ).
+         *
+         * @var StripeService|object|null
+         */
+        protected $service;
+        /**
+         * Customer id per payment method id, so the API is asked once per request.
+         *
+         * @var array<string,string>
+         */
+        protected array $customer_ids = [];
+        /**
+         * @param StripeService|object|null $service Stripe API wrapper; defaults to StripeService::init().
+         */
+        public function __construct($service = null)
+        {
+        }
+        public static function init(): void
+        {
+        }
+        /**
+         * @return StripeService|object
+         */
+        protected function service()
+        {
+        }
+        /**
+         * Meta the renewal charge reads.
+         *
+         * @param string $payment_method_id Stripe payment method id.
+         * @param string $customer_id       Stripe customer id.
+         *
+         * @return array<string,string>
+         */
+        public static function build_meta(string $payment_method_id, string $customer_id): array
+        {
+        }
+        /**
+         * Apply the token to the subscription, or to one of its unpaid renewal orders.
+         *
+         * @param true|\WP_Error|null $result       Result so far.
+         * @param object             $order        Subscription or renewal order (AbstractOrder).
+         * @param object             $token        Saved payment method (PaymentToken).
+         * @param object             $subscription The subscription (Subscription).
+         *
+         * @return true|\WP_Error
+         */
+        public function apply($result, $order, $token, $subscription)
+        {
+        }
+        /**
+         * The Stripe customer the payment method belongs to; charges must use that customer.
+         *
+         * @param string $payment_method_id Stripe payment method id.
+         * @param object $subscription      Subscription, for its stored customer id as a fallback.
+         *
+         * @return string|\WP_Error
+         */
+        protected function resolve_customer_id(string $payment_method_id, $subscription)
+        {
+        }
+    }
     class SubscriptionSync
     {
         protected static \StoreEngine\Addons\Stripe\GatewayStripe $gateway;
@@ -20730,6 +20824,222 @@ namespace StoreEngine\Addons\Subscription\API {
     {
         protected static array $controllers = [\StoreEngine\Addons\Subscription\API\Controllers\Items::class, \StoreEngine\Addons\Subscription\API\Controllers\Item::class, \StoreEngine\Addons\Subscription\API\Controllers\Create::class, \StoreEngine\Addons\Subscription\API\Controllers\Edit::class, \StoreEngine\Addons\Subscription\API\Controllers\Delete::class];
         public static function init()
+        {
+        }
+    }
+}
+namespace StoreEngine\Addons\Subscription\Classes {
+    class PaymentMethodChange
+    {
+        /**
+         * Query arg that shows the change form on the dashboard plan page.
+         */
+        const QUERY_ARG = 'change-payment-method';
+        /**
+         * Form action name (POST).
+         */
+        const FORM_ACTION = 'storeengine_change_subscription_payment_method';
+        /**
+         * POST field carrying FORM_ACTION.
+         */
+        const FORM_FIELD = 'storeengine_subscription_action';
+        /**
+         * Subscription meta set when auto-renewal was switched off because the saved payment method was removed.
+         */
+        const META_AUTO_RENEWAL_DISABLED = '_auto_renewal_disabled_token_removed';
+        /**
+         * Statuses in which the customer may change the payment method.
+         */
+        const ALLOWED_STATUSES = ['active', 'on_hold', 'pending_cancel'];
+        public static function init(): void
+        {
+        }
+        /**
+         * Nonce action for a subscription.
+         *
+         * @param int $subscription_id Subscription id.
+         *
+         * @return string
+         */
+        public static function nonce_action(int $subscription_id): string
+        {
+        }
+        /**
+         * Whether a gateway lets customers switch a subscription to another saved payment method.
+         *
+         * @param \StoreEngine\Payment\Gateways\PaymentGateway|null $gateway Gateway.
+         *
+         * @return bool
+         */
+        public static function gateway_supports_change(?\StoreEngine\Payment\Gateways\PaymentGateway $gateway): bool
+        {
+        }
+        /**
+         * The support rule, kept free of WordPress calls so it can be unit tested.
+         *
+         * @param bool $supports_customer_change Gateway supports `subscription_payment_method_change_customer`.
+         * @param bool $supports_tokenization    Gateway supports `tokenization` (saved payment methods).
+         * @param bool $has_handler              A handler is registered for the gateway's apply filter.
+         *
+         * @return bool
+         */
+        public static function is_supported(bool $supports_customer_change, bool $supports_tokenization, bool $has_handler): bool
+        {
+        }
+        /**
+         * Whether the status allows changing the payment method.
+         *
+         * @param string $status Subscription status.
+         *
+         * @return bool
+         */
+        public static function is_allowed_status(string $status): bool
+        {
+        }
+        /**
+         * Whether a user can change the payment method of a subscription.
+         *
+         * @param Subscription $subscription Subscription.
+         * @param int          $user_id      User id, defaults to the current user.
+         *
+         * @return bool
+         */
+        public static function can_change(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, int $user_id = 0): bool
+        {
+        }
+        /**
+         * Saved payment methods the subscription can switch to.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return \StoreEngine\Classes\PaymentTokens\PaymentToken[]
+         */
+        public static function get_available_tokens(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): array
+        {
+        }
+        /**
+         * The saved payment method the subscription renews with, if it's known.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return int Token id, 0 when unknown.
+         */
+        public static function get_current_token_id(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): int
+        {
+        }
+        /**
+         * Match the subscription's current payment method against the saved tokens.
+         *
+         * The gateway source id wins because it's what renewals charge; the stored token id list is the fallback.
+         *
+         * @param int[]                              $subscription_token_ids Token ids stored on the subscription.
+         * @param array<array{id:int,token:string}> $tokens                 Saved tokens for the gateway.
+         * @param string                             $source_id              Gateway source id on the subscription.
+         *
+         * @return int
+         */
+        public static function resolve_current_token_id(array $subscription_token_ids, array $tokens, string $source_id): int
+        {
+        }
+        /**
+         * URL of the change form on the dashboard plan page.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return string
+         */
+        public static function get_change_url(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): string
+        {
+        }
+        /**
+         * "Add payment method" URL that brings the customer back to the change form.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return string
+         */
+        public static function get_add_payment_method_url(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): string
+        {
+        }
+        /**
+         * The unpaid renewal order a failed automatic renewal left behind, if the subscription is on hold because of it.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return \StoreEngine\Classes\Order|null
+         */
+        public static function get_retryable_order(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): ?\StoreEngine\Classes\Order
+        {
+        }
+        /**
+         * Load a saved payment method the user may use for the subscription.
+         *
+         * @param Subscription $subscription Subscription.
+         * @param int          $token_id     Token id.
+         * @param int          $user_id      User id.
+         *
+         * @return \StoreEngine\Classes\PaymentTokens\PaymentToken|\WP_Error
+         */
+        public static function get_valid_token(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, int $token_id, int $user_id)
+        {
+        }
+        /**
+         * Switch the subscription (and any unpaid renewal order) to a saved payment method.
+         *
+         * @param Subscription $subscription Subscription.
+         * @param int          $token_id     Saved payment method (token) id.
+         * @param int          $user_id      The user making the change; must own the subscription and the token.
+         *
+         * @return \StoreEngine\Classes\PaymentTokens\PaymentToken|\WP_Error The token now in use.
+         */
+        public static function change(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, int $token_id, int $user_id)
+        {
+        }
+        /**
+         * Charge the failed renewal order again, with the subscription's current payment method.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return true|\WP_Error
+         */
+        public static function retry_payment(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription)
+        {
+        }
+        /**
+         * Handle the dashboard change form.
+         */
+        public static function handle_form_request(): void
+        {
+        }
+        /**
+         * Let the gateway apply the token to an order or subscription.
+         *
+         * @param \StoreEngine\Classes\AbstractOrder $order        Subscription or renewal order to update.
+         * @param Subscription  $subscription The subscription being changed.
+         * @param \StoreEngine\Classes\PaymentTokens\PaymentToken  $token        The new payment method.
+         *
+         * @return true|\WP_Error
+         */
+        protected static function apply_to_order(\StoreEngine\Classes\AbstractOrder $order, \StoreEngine\Addons\Subscription\Classes\Subscription $subscription, \StoreEngine\Classes\PaymentTokens\PaymentToken $token)
+        {
+        }
+        /**
+         * Store the token id as the order's payment token.
+         *
+         * @param \StoreEngine\Classes\AbstractOrder $order Order or subscription.
+         * @param \StoreEngine\Classes\PaymentTokens\PaymentToken  $token Token.
+         */
+        protected static function set_order_token(\StoreEngine\Classes\AbstractOrder $order, \StoreEngine\Classes\PaymentTokens\PaymentToken $token): void
+        {
+        }
+        /**
+         * Renewal orders still waiting for payment.
+         *
+         * @param Subscription $subscription Subscription.
+         *
+         * @return \StoreEngine\Classes\Order[]
+         */
+        protected static function get_unpaid_renewal_orders(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): array
         {
         }
     }
@@ -21684,6 +21994,47 @@ namespace StoreEngine\Addons\Subscription\Classes {
         {
         }
         /**
+         * Whether a subscription in the given status can be resumed (set back to active).
+         *
+         * Only a pending-cancellation subscription whose prepaid term hasn't ended yet can be resumed.
+         *
+         * @param string $status   Current subscription status.
+         * @param int    $end_time End of the prepaid term (UTC timestamp), 0 when unknown.
+         * @param int    $now      Current UTC timestamp.
+         *
+         * @return bool
+         */
+        public static function can_resume_from_pending_cancel(string $status, int $end_time, int $now): bool
+        {
+        }
+        /**
+         * Work out the next payment date when a pending-cancellation subscription is resumed.
+         *
+         * The customer already paid until the end of the prepaid term, so the next renewal is due then.
+         * Returns 0 when the date should be calculated from the billing schedule instead: the prepaid
+         * term already ended, or the subscription's own end date comes first (a fixed-length plan with
+         * no renewal left).
+         *
+         * @param int $prepaid_term_end End of the prepaid term (UTC timestamp).
+         * @param int $original_end     The subscription's end date before it was cancelled, 0 for none.
+         * @param int $now              Current UTC timestamp.
+         *
+         * @return int UTC timestamp, or 0.
+         */
+        public static function resolve_resume_next_payment_time(int $prepaid_term_end, int $original_end, int $now): int
+        {
+        }
+        /**
+         * Convert a stored date (date object, timestamp or date string in UTC) to a UTC timestamp.
+         *
+         * @param mixed $value Stored value.
+         *
+         * @return int
+         */
+        protected static function date_value_to_time($value): int
+        {
+        }
+        /**
          * Check if a subscription can be changed to a new status or date
          */
         public function can_be_updated_to($new_status)
@@ -22269,10 +22620,66 @@ namespace StoreEngine\Addons\Subscription\Classes {
 namespace StoreEngine\Addons\Subscription\Events {
     class CreateSubscription
     {
+        /**
+         * Order meta listing the subscriptions removed after its checkout payment failed.
+         */
+        const META_REMOVED_SUBSCRIPTIONS = '_failed_checkout_removed_subscriptions';
         public static function init(): void
         {
         }
         public function create_subscription(\StoreEngine\Classes\AbstractOrder $order, array $payload = []): void
+        {
+        }
+        /**
+         * Remove the subscriptions a failed checkout created.
+         *
+         * Subscriptions are created (on hold) before the gateway charges the first payment. When that payment
+         * fails, they would stay behind looking like subscriptions whose renewal failed, and each retry of the
+         * checkout (which uses a new order) would add more. Subscriptions that never had a successful payment
+         * are moved to trash, which hides them from the customer; the order keeps a note, and can no longer be
+         * paid from the account page, so the customer checks out again instead of paying for an order that has
+         * no subscription.
+         *
+         * The customer's account is left alone.
+         *
+         * @param \StoreEngine\Classes\AbstractOrder $order The order whose checkout failed.
+         * @param mixed         $error WP_Error describing the failure.
+         */
+        public function remove_unpaid_subscriptions($order, $error = null): void
+        {
+        }
+        /**
+         * Whether a subscription left by a failed checkout never had a successful payment and can be removed.
+         *
+         * @param string $status        Subscription status.
+         * @param string $paid_status   Subscription paid status.
+         * @param bool   $order_paid    Whether the parent order is paid.
+         * @param int    $renewal_count Number of renewal orders.
+         *
+         * @return bool
+         */
+        public static function should_remove_after_failed_checkout(string $status, string $paid_status, bool $order_paid, int $renewal_count): bool
+        {
+        }
+        /**
+         * An order whose subscriptions were removed after a failed checkout can't be paid later.
+         *
+         * @param bool          $needs_payment Whether the order needs payment.
+         * @param \StoreEngine\Classes\AbstractOrder $order         The order.
+         *
+         * @return bool
+         */
+        public static function block_payment_without_subscriptions($needs_payment, $order)
+        {
+        }
+        /**
+         * Flag it for the store when an order is paid after its subscriptions were removed (e.g. a late gateway confirmation).
+         *
+         * @param \StoreEngine\Classes\Order  $order      The order.
+         * @param string $status     New paid status.
+         * @param string $old_status Previous paid status.
+         */
+        public static function flag_late_payment_without_subscriptions($order, $status, $old_status = ''): void
         {
         }
         public function create(\StoreEngine\Classes\AbstractOrder $order, \StoreEngine\Classes\Cart $cart, array $payload = [])
@@ -24496,6 +24903,37 @@ namespace StoreEngine\Admin {
         {
         }
     }
+    class SavedViews extends \StoreEngine\Classes\AbstractAjaxHandler
+    {
+        const META_KEY = 'storeengine_saved_views';
+        const MAX_VIEWS = 30;
+        /**
+         * Largest accepted `filters` payload, in bytes. Real views are a few hundred.
+         */
+        const MAX_FILTERS_BYTES = 8192;
+        public function __construct()
+        {
+        }
+        /**
+         * All of the current user's views, keyed by screen.
+         */
+        public static function get_all(?int $user_id = null): array
+        {
+        }
+        /**
+         * List screens that support saved views. Anything else is rejected so a
+         * request can't grow the meta blob with arbitrary keys.
+         */
+        public static function screens(): array
+        {
+        }
+        public function save(array $payload)
+        {
+        }
+        public function delete(array $payload)
+        {
+        }
+    }
     /**
      * Backend service for inspecting and resetting StoreEngine's Action Scheduler
      * queue. The user-facing UI lives in the React "Action Scheduler" tab on the
@@ -24831,13 +25269,34 @@ namespace StoreEngine\Ajax {
         public function delete_bulk_product_attributes(array $payload)
         {
         }
+        /**
+         * What deleting an attribute (or one of its terms, with `term_id`) would remove.
+         */
+        public function get_product_attribute_usage(array $payload)
+        {
+        }
         public function get_product_attribute_terms(array $payload)
         {
         }
         public function create_product_attribute_term(array $payload)
         {
         }
+        /**
+         * Create several terms at once (the "quick add" presets in the term modal).
+         * Terms that already exist are skipped rather than failing the whole batch.
+         *
+         * @param array $payload attribute_id + terms[ { name, slug?, color? } ].
+         */
+        public function create_product_attribute_terms(array $payload)
+        {
+        }
         public function update_product_attribute_term(array $payload)
+        {
+        }
+        public function reorder_product_attributes(array $payload)
+        {
+        }
+        public function reorder_product_attribute_terms(array $payload)
         {
         }
         public function delete_product_attribute_term(array $payload)
@@ -25448,10 +25907,60 @@ namespace StoreEngine\API {
         }
         // ── Top selling products ──────────────────────────────────────────────────
         /**
-         * Top 5 products by revenue in $currency.
-         * Default = base currency → same as original.
+         * Top 5 products by revenue in $currency, with the change vs the compare
+         * window.
+         *
+         * Performance (audit 2026-09): the old query put the date range only inside
+         * SUM(CASE …), so every paid order line ever recorded was joined (4 meta
+         * joins each) and grouped on every dashboard load (~4s at 200k orders), and
+         * its wp_cache result didn't persist without an object cache. Now:
+         * - the query is DRIVEN by the date range (range scan on the
+         *   `_order_placed_date_gmt` meta index, STRAIGHT_JOIN so the optimizer
+         *   can't flip to a full orders scan);
+         * - lines are read from `storeengine_order_product_lookup` (one indexed row
+         *   per line) instead of three item-meta joins — 161ms / 624ms for 30-day /
+         *   1-year at 200k orders;
+         * - products are joined AFTER aggregating (a BIGINT id vs text meta join
+         *   can't use the posts PK);
+         * - the result is cached in a short transient.
+         * The lookup is filled by a queued job, so any in-window order missing from
+         * it makes this fall back to the (date-bounded) order-meta query and queue a
+         * rebuild for those orders; numbers are never computed from partial data.
          */
         protected function get_top_selling_products(string $from, string $to, int $compare, string $currency): array
+        {
+        }
+        /**
+         * Per-product totals from the product lookup table, or null when any paid
+         * order in the window has no lookup rows yet (then a rebuild is queued).
+         *
+         * @return array<int, object>|null product_id => totals.
+         */
+        protected function top_products_from_lookup(array $w, string $currency): ?array
+        {
+        }
+        /**
+         * Queue the lookup rebuild (the existing storeengine/store_product_lookup
+         * job) for up to 50 in-window paid orders that have no lookup rows.
+         */
+        protected function queue_lookup_rebuild(array $w, string $currency): void
+        {
+        }
+        /**
+         * Per-product totals from order item meta (fallback; date-bounded).
+         *
+         * @return array<int, object> product_id => totals.
+         */
+        protected function top_products_from_meta(array $w, string $currency): array
+        {
+        }
+        /**
+         * Keep published products with sales in the window, top 5 by revenue, and
+         * add names + change rates. Product rows are fetched for the few ids only.
+         *
+         * @param array<int, object> $totals product_id => totals.
+         */
+        protected function finalize_top_products(array $totals): array
         {
         }
         // ── Helpers ───────────────────────────────────────────────────────────────
@@ -25618,6 +26127,53 @@ namespace StoreEngine\API {
          * storefronts can reuse the same UI helpers.
          */
         protected function snapshot(): array
+        {
+        }
+    }
+    /**
+     * Catalog totals for the admin dashboard: product count, sellable items
+     * (simple products + variations) and stock value at cost.
+     *
+     * Built for large catalogs: three aggregate SQL queries (no per-product
+     * loops), cached in a transient that expires after a few minutes and is
+     * dropped whenever products, variations, stock or cost change.
+     */
+    class CatalogStats extends \WP_REST_Controller
+    {
+        const CACHE_KEY = 'storeengine_catalog_stats';
+        const CACHE_TTL = 5 * MINUTE_IN_SECONDS;
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function get_item_permissions_check($request)
+        {
+        }
+        /**
+         * @param \WP_REST_Request $request Request.
+         */
+        public function get_item($request)
+        {
+        }
+        public static function flush(): void
+        {
+        }
+        /**
+         * Only the meta that feeds these numbers invalidates the cache.
+         *
+         * @param int|int[] $meta_id  Meta id(s).
+         * @param int       $post_id  Post id.
+         * @param string    $meta_key Meta key.
+         */
+        public static function maybe_flush_on_meta($meta_id, $post_id, $meta_key): void
+        {
+        }
+        /**
+         * @return array{products:int, published:int, variable_products:int, variations:int, items:int, tracked_units:float, stock_value:float, currency:string}
+         */
+        public static function compute(): array
         {
         }
     }
@@ -25962,6 +26518,66 @@ namespace StoreEngine\API {
         {
         }
     }
+    class CustomerListFilters
+    {
+        /**
+         * Every user ID, loaded once and only when a condition needs "everyone
+         * except …" (a zero-matching order condition).
+         *
+         * @var int[]|null
+         */
+        protected ?array $all_ids = null;
+        public static function fields(): array
+        {
+        }
+        /**
+         * Restrict WP_User_Query args to the request's filters.
+         *
+         * @param array           $args    WP_User_Query args.
+         * @param \WP_REST_Request $request Request.
+         *
+         * @return array
+         */
+        public static function apply(array $args, \WP_REST_Request $request): array
+        {
+        }
+        /**
+         * User IDs matching every condition in a group.
+         *
+         * @param array $group Conditions.
+         *
+         * @return int[]
+         */
+        protected function group_ids(array $group): array
+        {
+        }
+        /**
+         * User IDs matching one condition.
+         *
+         * @param array $c { field, operator, value }.
+         *
+         * @return int[]
+         */
+        protected function condition_ids(array $c): array
+        {
+        }
+        /**
+         * Customers whose order count / paid total matches. Customers without
+         * orders count as 0, so they match when 0 satisfies the condition.
+         *
+         * @param string $field orders|spent.
+         * @param string $op    Operator.
+         * @param mixed  $value Value.
+         *
+         * @return int[]
+         */
+        protected function aggregate_ids(string $field, string $op, $value): array
+        {
+        }
+        protected function all_ids(): array
+        {
+        }
+    }
     /**
      * Customer API
      *
@@ -26252,6 +26868,21 @@ namespace StoreEngine\API {
         public function resume_subscription(\WP_REST_Request $request)
         {
         }
+        /**
+         * Saved payment methods the subscription can switch to.
+         */
+        public function get_payment_method_options(\WP_REST_Request $request)
+        {
+        }
+        /**
+         * Switch the subscription to another saved payment method, optionally retrying a failed renewal.
+         */
+        public function update_payment_method(\WP_REST_Request $request)
+        {
+        }
+        protected function format_payment_method_options(\StoreEngine\Addons\Subscription\Classes\Subscription $sub): array
+        {
+        }
         protected function change_status(\WP_REST_Request $request, string $new_status, string $note)
         {
         }
@@ -26410,6 +27041,42 @@ namespace StoreEngine\API {
         {
         }
         public function get_mini_cart_info(\WP_REST_Request $request)
+        {
+        }
+    }
+    class OrderListFilters
+    {
+        /**
+         * Allowed fields + operators. $screen is 'orders' or 'payments'.
+         */
+        public static function fields(string $screen = 'orders'): array
+        {
+        }
+        /**
+         * The `where` group for the request's filters, or null when none.
+         *
+         * @param \WP_REST_Request $request Request.
+         * @param string          $screen  'orders' | 'payments'.
+         *
+         * @return array|null
+         */
+        public static function where(\WP_REST_Request $request, string $screen = 'orders'): ?array
+        {
+        }
+        /**
+         * One condition as an OrderCollection where clause.
+         *
+         * @param array $c { field, operator, value }.
+         *
+         * @return array|null
+         */
+        protected static function condition(array $c): ?array
+        {
+        }
+        /**
+         * Text column condition: contains / equals / empty / not empty.
+         */
+        protected static function text(string $key, string $op, $value): array
         {
         }
     }
@@ -26726,6 +27393,161 @@ namespace StoreEngine\API {
         }
         // ── Helpers ───────────────────────────────────────────────────────────────────
         protected function get_cache_key($group, $sql, ...$args): string
+        {
+        }
+    }
+    class ProductFilters
+    {
+        /**
+         * Query var carrying title conditions to the posts_where filter.
+         */
+        const TITLE_VAR = 'storeengine_title_conditions';
+        public static function init()
+        {
+        }
+        /**
+         * Apply the `filters` request param to the list query.
+         *
+         * @param array           $args    WP_Query args.
+         * @param \WP_REST_Request $request Request.
+         *
+         * @return array
+         */
+        public function apply($args, $request)
+        {
+        }
+        /**
+         * Decode and validate the JSON filter payload.
+         *
+         * @param string $raw JSON.
+         *
+         * @return array[] Groups of sanitized conditions.
+         */
+        public static function parse(string $raw): array
+        {
+        }
+        /**
+         * Allowed operators per field.
+         */
+        public static function fields(): array
+        {
+        }
+        /**
+         * Build WP_Query args for one group of AND-ed conditions.
+         *
+         * @param array $group Conditions.
+         *
+         * @return array
+         */
+        public static function group_args(array $group): array
+        {
+        }
+        /**
+         * Title conditions (WP_Query has no LIKE on the title alone).
+         *
+         * @param string   $where SQL WHERE.
+         * @param \WP_Query $query Query.
+         *
+         * @return string
+         */
+        public function title_where($where, $query)
+        {
+        }
+        /**
+         * Product IDs with at least one price matching the condition.
+         *
+         * @param string $op    gt|lt|eq|between.
+         * @param mixed  $value Number or [min, max].
+         *
+         * @return int[]
+         */
+        protected static function ids_by_price(string $op, $value): array
+        {
+        }
+        protected static function numeric_meta(string $key, string $op, $value): array
+        {
+        }
+        protected static function range($value): array
+        {
+        }
+        /**
+         * Merge one group's args into the list query, AND-ing with what is there.
+         */
+        protected static function merge(array $args, array $extra): array
+        {
+        }
+        /**
+         * Limit the query to the given IDs, intersecting any existing post__in
+         * (e.g. a vendor scope) so a filter can never widen the list.
+         */
+        protected static function restrict_ids(array $args, array $ids): array
+        {
+        }
+        protected static function intersect(?array $current, array $ids): array
+        {
+        }
+    }
+    class ProductFormEnforcement
+    {
+        /**
+         * Request paths that map onto columns of the prepared post object.
+         */
+        const POST_COLUMNS = ['title' => 'post_title', 'content' => 'post_content', 'excerpt' => 'post_excerpt', 'slug' => 'post_name', 'status' => 'post_status'];
+        public static function init()
+        {
+        }
+        /**
+         * @param object|\WP_Error $prepared_post Post object about to be inserted.
+         * @param \WP_REST_Request $request       Save request.
+         * @return object|\WP_Error
+         */
+        public function enforce($prepared_post, $request)
+        {
+        }
+        /**
+         * Fill hidden fields that have a default and weren't (meaningfully) sent.
+         *
+         * @param object          $prepared_post Post being created.
+         * @param \WP_REST_Request $request       Save request.
+         * @param array           $fields        Resolved fields.
+         * @return object
+         */
+        protected function apply_hidden_defaults($prepared_post, \WP_REST_Request $request, array $fields)
+        {
+        }
+        /**
+         * Required fields that are empty in this request.
+         *
+         * @param \WP_REST_Request $request  Save request.
+         * @param array           $fields   Resolved fields.
+         * @param bool            $creating   Whether a new product is being created.
+         * @param bool            $publishing Whether an existing product is going live now, so fields
+         *                                    missing from a partial request are judged by their stored value.
+         * @return array<string,array> id => row.
+         */
+        protected function missing_required(\WP_REST_Request $request, array $fields, bool $creating, bool $publishing = false): array
+        {
+        }
+        /**
+         * Current stored value of a field, for the kinds saved on the post itself
+         * (featured image, post meta, taxonomy terms). Null when it can't be read cheaply
+         * (custom-table data such as SKU or stock), in which case the field isn't judged.
+         *
+         * @param int   $post_id Product ID.
+         * @param array $row     Resolved field.
+         * @return mixed|null
+         */
+        protected function stored_value(int $post_id, array $row)
+        {
+        }
+        /**
+         * Write a value at a dotted path into the request (meta.x, stock.x, or top level).
+         *
+         * @param \WP_REST_Request $request Save request.
+         * @param string          $path    Dotted path.
+         * @param mixed           $value   Value.
+         */
+        protected function set_request_path(\WP_REST_Request $request, string $path, $value): void
         {
         }
     }
@@ -27312,9 +28134,6 @@ namespace StoreEngine {
         public static function init()
         {
         }
-        public function web_fonts_url($font): string
-        {
-        }
         public function enqueue_admin_menu_css($hook)
         {
         }
@@ -27356,6 +28175,14 @@ namespace StoreEngine {
          * @since 1.3.3
          */
         public function block_editor_assets()
+        {
+        }
+        /**
+         * Variation image in the gallery's sizes, or null when it has none.
+         *
+         * @param int $attachment_id Attachment id.
+         */
+        protected static function get_variation_image(int $attachment_id): ?array
         {
         }
         public static function get_product_variations(\StoreEngine\Classes\Product\VariableProduct $product): array
@@ -27980,7 +28807,30 @@ namespace StoreEngine\Blocks {
     class BlockVisibility
     {
         const HANDLE = 'storeengine-membership-block-restriction';
+        /**
+         * Attributes the editor script adds to every block type. Keep in step with
+         * the `blocks.registerBlockType` filter in block-restriction.js.
+         */
+        const ATTRIBUTES = ['storeengineVisibility' => ['type' => 'string', 'default' => ''], 'storeengineGroups' => ['type' => 'array', 'default' => []]];
         public static function init()
+        {
+        }
+        /**
+         * Declare the editor script's attributes on the server as well.
+         *
+         * Registered in JavaScript alone, the two block registries disagree about
+         * what a block's attributes are. A block previewed with ServerSideRender
+         * sends its full editor attribute set to the block-renderer REST endpoint,
+         * which validates it against the server-registered schema with
+         * `additionalProperties => false` — so the unknown keys failed every such
+         * preview with a 400 `rest_invalid_param`, shown in the editor as
+         * "Error loading block".
+         *
+         * @param array $args Block type registration arguments.
+         *
+         * @return array
+         */
+        public function register_attributes($args)
         {
         }
         public function enqueue()
@@ -28265,6 +29115,19 @@ namespace StoreEngine\Classes {
         protected array $new_meta_data = [];
         public const CACHE_KEY = 'storeengine_product_';
         public const CACHE_GROUP = 'storeengine_products';
+        /**
+         * Marker baked into cache keys of cached product/variant lists.
+         *
+         * wp_cache_flush_group() is a no-op on persistent object caches that don't
+         * support it (e.g. many Redis setups), which left stale variants (old stock,
+         * price…) served after a save. Bumping this marker invalidates on any backend.
+         */
+        public static function cache_version(): string
+        {
+        }
+        public static function flush_cache(): void
+        {
+        }
         public function __construct(int $id = 0)
         {
         }
@@ -28766,6 +29629,13 @@ namespace StoreEngine\Classes {
         public function get_product_sold(string $start, string $end)
         {
         }
+        /**
+         * All-time top 5 products by units sold.
+         *
+         * Aggregates first and reads thumbnail / gallery meta only for the final
+         * five (the old query joined two postmeta rows onto every order line before
+         * grouping), and caches the result briefly.
+         */
         public function get_top_products(): array
         {
         }
@@ -28784,6 +29654,44 @@ namespace StoreEngine\Classes {
         protected array $new_data = [];
         public const CACHE_KEY = 'storeengine_attribute_';
         public const CACHE_GROUP = 'storeengine_attributes';
+        /**
+         * Term meta key holding a term's position for the 'custom-ordering' sort.
+         */
+        public const TERM_ORDER_META = '_storeengine_term_order';
+        /**
+         * Version token baked into list/name/count cache keys.
+         *
+         * Bumping it invalidates those entries on every cache backend. Relying only
+         * on wp_cache_flush_group() leaves them stale on persistent object caches
+         * that don't support group flushing, so new attributes never register their
+         * taxonomy and deleted ones linger in the list.
+         */
+        public static function get_cache_version(): string
+        {
+        }
+        /**
+         * Whether the attribute_order column exists (added by a migration).
+         */
+        public static function has_order_column(): bool
+        {
+        }
+        /**
+         * ORDER BY for attribute lists: manual order first, then newest, which is
+         * the order the list had before it could be sorted.
+         */
+        public static function order_by_sql(): string
+        {
+        }
+        public static function bump_cache_version(): void
+        {
+        }
+        /**
+         * Whether another attribute row already uses this slug. Reads the table
+         * directly (no cache) so a stale object cache can't let duplicates through.
+         */
+        public static function name_exists(string $name, int $exclude_id = 0): bool
+        {
+        }
         public function __construct(int $id = 0)
         {
         }
@@ -28820,16 +29728,59 @@ namespace StoreEngine\Classes {
         public function get_terms($args = [])
         {
         }
+        /**
+         * Persist a custom term order (drag-and-drop in the Attributes screen).
+         *
+         * @param int[] $term_ids Term IDs in their new order. IDs that don't
+         *                        belong to this attribute are ignored.
+         *
+         * @return int Number of terms positioned.
+         */
+        public function reorder_terms(array $term_ids): int
+        {
+        }
         public function get_count()
         {
         }
         public function add_term(string $name, array $args = [])
         {
         }
+        /**
+         * Put a new term at the end of the custom order. When some existing terms
+         * were never positioned, position all of them first (once) so the new
+         * term doesn't jump ahead of them.
+         *
+         * @param int $term_id New term ID.
+         */
+        protected function append_to_custom_order(int $term_id): void
+        {
+        }
         public function update_term(int $term_id, string $name, array $args = [])
         {
         }
         public function delete_term(int $term_id)
+        {
+        }
+        /**
+         * What deleting this attribute, or one of its terms, takes with it.
+         *
+         * Products lose the attribute/term, and every variation built on it is
+         * deleted along with its price, SKU and stock. Past orders keep their line
+         * items but no longer point at a live variation.
+         *
+         * @param int $term_id Term to check; 0 checks the whole attribute.
+         * @param int $limit   How many affected products to list.
+         *
+         * @return array{in_use:bool,terms:int,products:int,variations:int,unsellable:int,orders:int,stock:float,items:array}
+         */
+        public function get_usage(int $term_id = 0, int $limit = 8): array
+        {
+        }
+        /**
+         * Drop a deleted attribute taxonomy from every product's saved attribute
+         * order, so products don't keep referencing a taxonomy that's gone.
+         */
+        protected function forget_in_products(string $taxonomy): void
         {
         }
         public function is_public(): bool
@@ -28873,6 +29824,20 @@ namespace StoreEngine\Classes {
         {
         }
         public function get_all_names()
+        {
+        }
+        /**
+         * Save a manual order (drag-and-drop in the Attributes screen).
+         *
+         * The screen may show only part of the list (paged or filtered), so the
+         * given IDs are placed back into the positions they already hold in the
+         * full list, in their new order; every other attribute keeps its place.
+         *
+         * @param int[] $ids Attribute IDs in their new relative order.
+         *
+         * @return bool False when the order column isn't available yet.
+         */
+        public function reorder(array $ids): bool
         {
         }
         public function get_total_count(string $search = ''): int
@@ -30638,6 +31603,29 @@ namespace StoreEngine\Classes {
          *                        On failure: WP_Error with a `status` data key (HTTP code) plus optional fields.
          */
         public static function place_order(array $payload, ?\StoreEngine\Classes\Order $existing_order = null)
+        {
+        }
+        /**
+         * Whether a gateway's process_payment() result reports a failed payment.
+         *
+         * @param mixed $result Gateway result.
+         *
+         * @return bool
+         */
+        public static function is_failed_payment_result($result): bool
+        {
+        }
+        /**
+         * Let addons clean up after checkout failed once the order had been processed.
+         *
+         * The order already exists at this point, and addons may have created records for it
+         * (e.g. subscriptions) that must not look like real, unpaid ones.
+         *
+         * @param Order    $order   The order.
+         * @param \WP_Error $error   Why checkout failed.
+         * @param array    $payload Checkout payload.
+         */
+        protected static function handle_place_order_failure(\StoreEngine\Classes\Order $order, \WP_Error $error, array $payload): void
         {
         }
         /**
@@ -40170,6 +41158,28 @@ namespace StoreEngine {
         {
         }
         /**
+         * Add attribute_order so attributes can be sorted by hand.
+         *
+         * Every row starts at 0, so the list keeps its old newest-first order
+         * until someone drags. The flag is only set once the column exists, and
+         * the list queries use the column only when the flag is set.
+         */
+        public function migrate_attribute_order_column()
+        {
+        }
+        /**
+         * Move untouched Brand & Style neutrals to the refreshed grey scale.
+         *
+         * Settings are saved in full on install, so a new default never reaches an
+         * existing store on its own. Only a colour still equal to a previous default
+         * is moved; a colour the merchant picked is left alone. Flag-gated (not
+         * version-gated) and placed before save_settings() for the same reasons as
+         * migrate_sticky_add_to_cart_key().
+         */
+        public function migrate_neutral_palette()
+        {
+        }
+        /**
          * Backfill the queryable coupon end-timestamp mirror.
          *
          * The admin coupon list filters "Expired" / "No end date" against
@@ -45556,6 +46566,65 @@ namespace StoreEngine\Utils {
         {
         }
     }
+    class ListFilters
+    {
+        const MAX_GROUPS = 5;
+        const MAX_CONDITIONS = 20;
+        /**
+         * Decode and validate a JSON filter payload.
+         *
+         * @param mixed $raw    JSON string from the request.
+         * @param array $fields Allowed fields: id => [ operators ].
+         *
+         * @return array[] Groups of sanitized conditions (empty when nothing valid).
+         */
+        public static function parse($raw, array $fields): array
+        {
+        }
+        /**
+         * [min, max] for a numeric condition. Open ends use a huge bound so every
+         * operator can be expressed as an inclusive BETWEEN (which keeps decimals;
+         * see OrderListFilters).
+         *
+         * @param string $op    gt|lt|eq|between.
+         * @param mixed  $value Number or [min, max].
+         *
+         * @return float[]
+         */
+        public static function number_bounds(string $op, $value): array
+        {
+        }
+        /**
+         * Whether a number satisfies a numeric condition.
+         */
+        public static function number_matches(float $number, string $op, $value): bool
+        {
+        }
+        /**
+         * GMT [from, to] datetimes for a date condition entered in the site's
+         * timezone. Either end may be null (open).
+         *
+         * @param string $op    after|before|between|last_days.
+         * @param mixed  $value Y-m-d, [Y-m-d, Y-m-d] or a number of days.
+         *
+         * @return array{0:?string,1:?string}
+         */
+        public static function date_bounds_gmt(string $op, $value): array
+        {
+        }
+        protected static function valid_date($date): bool
+        {
+        }
+        public static function sanitize_value($value)
+        {
+        }
+        public static function needs_value(string $op): bool
+        {
+        }
+        public static function is_blank($value): bool
+        {
+        }
+    }
     /**
      * A class of utilities for dealing with numbers.
      */
@@ -45741,6 +46810,141 @@ namespace StoreEngine\Utils {
         {
         }
         public static function get_cart_info(): array
+        {
+        }
+    }
+    class ProductFormFields
+    {
+        const SETTING = 'product_form';
+        /**
+         * Per-request cache of the resolved list. Flushed after a settings save.
+         *
+         * @var array|null
+         */
+        protected static $resolved = null;
+        /**
+         * Schema of every configurable section and field.
+         *
+         * Each entry:
+         *   - kind                         'section' | 'field'
+         *   - section                      (field) id of the section it belongs to
+         *   - label                        translated label
+         *   - path                         (field) Formik path in the editor / request path on the server
+         *   - type                         text | textarea | number | toggle | select | terms | media
+         *   - options                      (select) value => label
+         *   - supports                     which controls apply: hide, required, default
+         *   - system                       true = always visible and required (e.g. the title)
+         *   - requires_default_when_hidden other parts of the form depend on it, so hiding it needs a default
+         *   - server                       false = saved by a separate request, so it can only be enforced in the editor
+         *   - addon                        add-on slug that must be active for the field to exist
+         *
+         * @return array<string,array>
+         */
+        public static function schema(): array
+        {
+        }
+        /**
+         * Section labels used to group fields in the settings screen.
+         *
+         * @return array<string,string>
+         */
+        public static function section_labels(): array
+        {
+        }
+        /**
+         * Saved overrides, normalised to [ 'fields' => array ].
+         */
+        public static function saved(): array
+        {
+        }
+        /**
+         * Resolved list: schema entry + effective hidden / required / default.
+         *
+         * @return array<string,array>
+         */
+        public static function all(): array
+        {
+        }
+        /**
+         * Drop the per-request cache (after the setting changes, and in tests).
+         */
+        public static function flush(): void
+        {
+        }
+        /**
+         * Whether any override is configured. Everything else short-circuits on this,
+         * so a store that never touches the feature pays nothing.
+         */
+        public static function is_active(): bool
+        {
+        }
+        /**
+         * Full admins always see the whole form so nobody can lock themselves out.
+         * Shop managers, staff and vendors get the configured form.
+         */
+        public static function is_subject_to_config(?\WP_User $user = null): bool
+        {
+        }
+        /**
+         * What the React product editor receives. Only entries that change behaviour
+         * are included (keeps the payload tiny). Null when the user isn't restricted.
+         *
+         * @return array|null
+         */
+        public static function editor_config(?\WP_User $user = null): ?array
+        {
+        }
+        /**
+         * Validate a config from the settings screen.
+         *
+         * @param mixed $input Raw `product_form` value.
+         * @return array{config:array,errors:string[]} Clean config plus human-readable problems.
+         */
+        public static function sanitize($input): array
+        {
+        }
+        /**
+         * Read a dotted path (`meta.foo`, `stock.manages_stock`) from a request payload.
+         *
+         * @param array  $data Decoded request params.
+         * @param string $path Dotted path.
+         * @return mixed|null
+         */
+        public static function get_path_value(array $data, string $path)
+        {
+        }
+        /**
+         * Whether the path exists in the payload at all (distinguishes "not sent"
+         * from "sent empty").
+         */
+        public static function has_path(array $data, string $path): bool
+        {
+        }
+        /**
+         * Whether a submitted value counts as "empty" for its field type.
+         *
+         * @param mixed $value Submitted value.
+         * @param array $entry Schema entry.
+         */
+        public static function is_empty_value($value, array $entry): bool
+        {
+        }
+        /**
+         * Sanitise a default value for its field type. Null = "no default".
+         *
+         * @param mixed $value Raw value.
+         * @param array $entry Schema entry.
+         * @return mixed|null
+         */
+        public static function clean_value($value, array $entry)
+        {
+        }
+        /**
+         * Tolerant boolean coercer: form-encoded payloads send `false` as "false".
+         *
+         * @param mixed $value Raw value.
+         */
+        public static function to_bool($value): bool
         {
         }
     }
@@ -46979,6 +48183,16 @@ namespace {
     function storeengine_archive_product_sidebar()
     {
     }
+    /**
+     * Global product attributes with "Enable archives" turned on — the same
+     * flag that governs their taxonomy archive pages, reused here to decide
+     * which attributes are offered as archive filters.
+     *
+     * @return array<string, array{label: string, public: bool}>
+     */
+    function storeengine_get_public_product_attributes(): array
+    {
+    }
     function storeengine_get_archive_filter_widgets()
     {
     }
@@ -46992,6 +48206,30 @@ namespace {
     {
     }
     function storeengine_render_archive_product_filter_tags_widget()
+    {
+    }
+    /**
+     * Render one checkbox filter group for a global product attribute.
+     * The dispatcher (storeengine_archive_header_filter_widget()) calls this
+     * once per public attribute via a bound closure — see
+     * storeengine_get_archive_filter_widgets().
+     *
+     * @param string $attribute_name Attribute name (e.g. "color"), not the taxonomy.
+     */
+    function storeengine_render_archive_product_filter_attribute_widget(string $attribute_name)
+    {
+    }
+    /**
+     * Narrow the archive AJAX query by whichever attribute term checkboxes were
+     * selected. Mirrors the Brand addon's apply_brand_filter_args(): selections
+     * arrive in the `storeengine/archive_product_filter` AJAX GET payload as
+     * `attribute_{name}[]`, so they're read from $_REQUEST rather than the
+     * $payload passed to the AJAX callback (this filter only receives $args).
+     *
+     * @param array $args WP_Query args built by Helper::prepare_product_search_query_args().
+     * @return array
+     */
+    function storeengine_apply_attribute_filter_args($args)
     {
     }
     function storeengine_checkout_order_details()
