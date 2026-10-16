@@ -6775,6 +6775,56 @@ namespace StoreEngine\Addons\Invoice\Ajax {
     }
 }
 namespace StoreEngine\Addons\Invoice {
+    class DocumentNumber
+    {
+        const LOCK_NAME = 'storeengine_document_number';
+        /**
+         * Returns the stored number for a document type, assigning one on first
+         * access so merchants don't have to configure anything to get a sequence
+         * going. Legacy invoice numbers continue to come from the invoice-number
+         * meta so pre-existing orders don't change.
+         */
+        public static function get_or_assign(\StoreEngine\Classes\Order $order, string $type): string
+        {
+        }
+        /**
+         * Assigns a number for a document type under a MySQL advisory lock so
+         * concurrent "View" clicks don't claim the same sequence or skip one.
+         */
+        public static function assign(\StoreEngine\Classes\Order $order, string $type): string
+        {
+        }
+        public static function format(int $seq, int $year, string $type): string
+        {
+        }
+        protected static function default_prefix(string $type): string
+        {
+        }
+        protected static function meta_key(string $type): string
+        {
+        }
+        protected static function seq_meta_key(string $type): string
+        {
+        }
+        protected static function opt_next(string $type): string
+        {
+        }
+        protected static function opt_year(string $type): string
+        {
+        }
+        protected static function opt_prefix_key(string $type): string
+        {
+        }
+        protected static function opt_padding_key(string $type): string
+        {
+        }
+        protected static function opt_reset_key(string $type): string
+        {
+        }
+        protected static function opt_start_key(string $type): string
+        {
+        }
+    }
     class HelperAddon
     {
         public static function get_fonts_dir(): string
@@ -6787,6 +6837,15 @@ namespace StoreEngine\Addons\Invoice {
         {
         }
         public static function get_invoice_preview_url(string $order_key): string
+        {
+        }
+        /**
+         * The date printed on an invoice, in store time and the configured format.
+         *
+         * The paid date when the setting asks for it and the order is paid,
+         * otherwise the order date, so an invoice never goes out without a date.
+         */
+        public static function get_invoice_date(\StoreEngine\Classes\Order $order): ?string
         {
         }
         public static function generate_pdf(\StoreEngine\Classes\Order $order): ?string
@@ -6820,6 +6879,29 @@ namespace StoreEngine\Addons\Invoice {
          * Format a money amount in the order's currency.
          */
         public static function price($amount, \StoreEngine\Classes\Order $order): string
+        {
+        }
+        /**
+         * Resolve the template.php + style.css paths for a document type.
+         *
+         * Lookup order:
+         *   1. {theme}/storeengine/invoice/{type}/template.php (and style.css)
+         *   2. {plugin}/addons/invoice/templates/{type}/template.php (bundled)
+         *
+         * The shared base.css (loaded first) resolves the same way, from
+         * {theme}/storeengine/invoice/base.css or the bundled file.
+         *
+         * The theme-override hierarchy means a merchant can tweak the layout
+         * without editing the plugin, and future upgrades won't clobber their
+         * work. If a theme ships only template.php, the bundled style.css is
+         * still picked up (and vice-versa).
+         *
+         * The chosen paths run through storeengine/invoice/template_path so
+         * addons can supply their own templates for custom document types.
+         *
+         * @return array{template: string, style: string, base: string}
+         */
+        public static function resolve_template_paths(string $document_type): array
         {
         }
     }
@@ -9811,6 +9893,15 @@ namespace StoreEngine\Payment\Gateways {
         {
         }
         public function get_settings(): array
+        {
+        }
+        /**
+         * Settings shaped for the admin REST/UI: checkbox fields are always booleans,
+         * so the settings form can be posted back without failing schema validation.
+         *
+         * @return array
+         */
+        public function get_admin_settings(): array
         {
         }
         /**
@@ -16747,6 +16838,15 @@ namespace StoreEngine\Classes {
          *
          * @return array
          */
+        /**
+         * Net value of the taxable line items, keyed by tax class slug ('' = Standard).
+         * Used to split shipping tax across the classes in a mixed-class order.
+         *
+         * @return array<string, float>
+         */
+        public function get_taxable_item_value_by_tax_class(): array
+        {
+        }
         public function get_items_tax_classes()
         {
         }
@@ -19496,7 +19596,33 @@ namespace StoreEngine\Addons\Stripe {
         public function get_customer(\StoreEngine\Classes\Customer $customer, bool $create = true)
         {
         }
-        public function create_checkout_payment_intent(\StoreEngine\Classes\Order $order, ?float $amount = null, ?string $stripe_customer_id = null, bool $save_method = false): \StoreEngine\Stripe\PaymentIntent
+        public function create_checkout_payment_intent(\StoreEngine\Classes\Order $order, ?float $amount = null, ?string $stripe_customer_id = null, bool $save_method = false, ?string $idempotency_key = null): \StoreEngine\Stripe\PaymentIntent
+        {
+        }
+        /**
+         * Get the existing checkout PaymentIntent for an order (reusing / updating
+         * it) or create a new one — guaranteeing at most one live PaymentIntent per
+         * StoreEngine order.
+         *
+         * This is the single entry point the block + instant-checkout flows must use
+         * when minting a client_secret. It closes the duplicate-charge gap where
+         * every call to self::create_checkout_payment_intent() created a brand-new
+         * intent (and a new client_secret) on each re-render, order-bump amount
+         * change, page refresh or rapid re-click — letting more than one intent
+         * succeed for the same order.
+         *
+         *  - If the order already references an intent that has succeeded, is being
+         *    captured, or is processing, that intent is returned untouched — a second
+         *    charge is never created.
+         *  - If it references an unpaid intent, the amount / currency / metadata are
+         *    synced onto it (handling order-bump totals) and the SAME intent — with
+         *    the same client_secret — is returned.
+         *  - Otherwise a new intent is created with a deterministic idempotency key
+         *    so concurrent / duplicated "create" requests collapse into one intent.
+         *
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function get_or_create_checkout_payment_intent(\StoreEngine\Classes\Order $order, ?float $amount = null, ?string $stripe_customer_id = null, bool $save_method = false): \StoreEngine\Stripe\PaymentIntent
         {
         }
         /**
@@ -24334,52 +24460,12 @@ namespace StoreEngine {
         public function conditional_loaded()
         {
         }
-        public function dispatch_insights()
-        {
-        }
         public function redirect_storeengine_product()
         {
         }
     }
 }
 namespace StoreEngine\Admin {
-    // phpcs:ignoreFile
-    class Insights
-    {
-        private static $instances = [];
-        private $slug;
-        private $type;
-        private $version;
-        private $api_site_url;
-        private $config = [];
-        private function __construct($api_site, $slug, $type = 'plugin', $version = null, $config = [])
-        {
-        }
-        public static function init($api_site, $slug, $type = 'plugin', $version = null, $config = [])
-        {
-        }
-        public function maybe_show_optin()
-        {
-        }
-        public function handle_optin_click()
-        {
-        }
-        public function inject_deactivate_feedback($hook)
-        {
-        }
-        private function send_to_server($track_type, $extra_data = [])
-        {
-        }
-        private function is_already_sent($type)
-        {
-        }
-        private function mark_sent($type)
-        {
-        }
-        public function enqueue_inline_css()
-        {
-        }
-    }
     class Menu
     {
         public static function init()
@@ -24557,36 +24643,23 @@ namespace StoreEngine\Admin {
         {
         }
         /**
-         * Warn the admin when shipping and/or tax is active but the Postcode field
-         * customers rely on to trigger those calculations isn't collected.
+         * Warn the admin, in one notice, when the address fields that shipping and
+         * tax rely on aren't being collected.
          *
-         * Both shipping-zone matching ({@see ShippingUtils}) and tax-rate matching
-         * ({@see \StoreEngine\Classes\Tax}) look the rate up by the destination
-         * postcode. If the relevant Postcode checkout field is disabled — or merely
-         * optional, so a shopper can leave it blank — postcode-based rates cannot be
-         * matched and the order silently gets the wrong (or zero) shipping/tax.
+         * Shipping-zone matching ({@see ShippingUtils}) and tax-rate matching
+         * ({@see \StoreEngine\Classes\Tax}) look rates up by the destination State /
+         * Region and Postcode. When shipping is live, the shipping State / Region and
+         * Postcode fields must be on (Postcode also required); when tax is based on the
+         * billing address, so must the billing Postcode. The notice is not dismissible
+         * and goes away by itself once every listed field is fixed under Checkout
+         * Fields.
          *
          * Shipping's own postcode is auto-promoted to required whenever the field is
-         * enabled and shipping is live (see CheckoutFields::all()), so the real gaps
-         * this catches are: (a) the field turned off entirely, and (b) billing-based
-         * tax, where the billing Postcode has no such promotion and can be left
-         * optional.
+         * enabled and shipping is live (see CheckoutFields::all()), so only a disabled
+         * shipping postcode is reported there. A billing postcode can be left optional,
+         * so that is reported too.
          */
-        public static function add_postcode_required_notice()
-        {
-        }
-        /**
-         * Warn the admin when shipping is active but customers can't enter the
-         * address details needed to calculate it.
-         *
-         * Shipping zone matching and rate calculation rely on a "full" shipping
-         * address. When BOTH the State / Region and Postal Code checkout fields are
-         * disabled, the only location detail left is the City — so an empty City
-         * (or a store that expected to collect a ZIP) silently yields zero shipping
-         * options with no feedback to the shopper. Surface that misconfiguration so
-         * it isn't discovered the hard way at checkout.
-         */
-        public static function add_shipping_address_fields_notice()
+        public static function add_address_fields_notice()
         {
         }
         private function respond_error($message, $code = 403)
@@ -24714,12 +24787,6 @@ namespace StoreEngine\Admin {
         {
         }
         public function add_ablocks_notice()
-        {
-        }
-        public static function show_get_pro_nag()
-        {
-        }
-        public static function remove_get_pro_nag()
         {
         }
     }
@@ -25363,25 +25430,6 @@ namespace StoreEngine\Ajax {
         protected function set_checkout_data(\StoreEngine\Classes\Order $order, array $data): void
         {
         }
-        /**
-         * @return array
-         * @deprecated
-         */
-        protected function prepare_purchase_items_data(): array
-        {
-        }
-        /**
-         * Prepare order data.
-         *
-         * @param array $data Data.
-         * @param array $purchase_items Purchase Items.
-         *
-         * @return array
-         * @deprecated 1.5.8
-         */
-        protected function prepare_order_data(array $data, array $purchase_items): array
-        {
-        }
         public function get_order(array $payload)
         {
         }
@@ -25400,15 +25448,6 @@ namespace StoreEngine\Ajax {
         {
         }
         private function validate_checkout_data(array $data)
-        {
-        }
-        /**
-         * @param $data
-         *
-         * @return void
-         * @deprecated 1.5.8
-         */
-        public function change_subscription($data)
         {
         }
         public function refund($data)
@@ -26402,6 +26441,82 @@ namespace StoreEngine\API {
         {
         }
     }
+    class CouponFilters
+    {
+        /**
+         * Query var carrying code (title) conditions to the posts_where filter.
+         */
+        const TITLE_VAR = 'storeengine_coupon_code_conditions';
+        public static function init()
+        {
+        }
+        /**
+         * Allowed operators per field.
+         */
+        public static function fields(): array
+        {
+        }
+        /**
+         * Apply the `filters` request param to the list query.
+         *
+         * @param array           $args    WP_Query args.
+         * @param \WP_REST_Request $request Request.
+         *
+         * @return array
+         */
+        public function apply($args, $request)
+        {
+        }
+        /**
+         * Build WP_Query args for one group of AND-ed conditions.
+         *
+         * @param array $group Conditions.
+         *
+         * @return array
+         */
+        public static function group_args(array $group): array
+        {
+        }
+        /**
+         * Code conditions (WP_Query has no LIKE on the title alone).
+         *
+         * @param string   $where SQL WHERE.
+         * @param \WP_Query $query Query.
+         *
+         * @return string
+         */
+        public function code_where($where, $query)
+        {
+        }
+        /**
+         * [from, to] unix timestamps for an expiry condition. The stored end
+         * timestamp is read with the same strtotime() the checkout uses, so the
+         * bounds are built the same way.
+         *
+         * @param string $op    after|before|between.
+         * @param mixed  $value Y-m-d or [Y-m-d, Y-m-d].
+         *
+         * @return int[]
+         */
+        protected static function end_bounds(string $op, $value): array
+        {
+        }
+        protected static function numeric_meta(string $key, string $op, $value): array
+        {
+        }
+        /**
+         * Merge one group's args into the list query, AND-ing with what is there.
+         */
+        protected static function merge(array $args, array $extra): array
+        {
+        }
+        /**
+         * Limit the query to the given IDs, intersecting any existing post__in.
+         */
+        protected static function restrict_ids(array $args, array $ids): array
+        {
+        }
+    }
     class Coupon
     {
         /**
@@ -27200,26 +27315,6 @@ namespace StoreEngine\API {
         {
         }
         /**
-         * @param $cart
-         *
-         * @return array
-         *
-         * @deprecated
-         */
-        protected function prepare_purchase_items_data($cart): array
-        {
-        }
-        /**
-         * @param $request
-         *
-         * @return array
-         *
-         * @deprecated
-         */
-        protected function prepare_item_for_database($request): array
-        {
-        }
-        /**
          * @param array $schema
          * @param $order_purchase_items
          *
@@ -27237,6 +27332,25 @@ namespace StoreEngine\API {
          * @deprecated
          */
         protected function _prepare_order_billing_address_for_database(array $schema, $request_billing_address): array
+        {
+        }
+    }
+    class Packages extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'packages';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permissions_check($request)
+        {
+        }
+        public function get_items($request)
+        {
+        }
+        public function save_items($request)
         {
         }
     }
@@ -27677,7 +27791,7 @@ namespace StoreEngine\API {
         public function extend_product_rest_response($item, $post, $request)
         {
         }
-        public static function build_stock_payload($entity, bool $expose_inventory = false): array
+        public static function build_stock_payload($entity, bool $expose_inventory = false, string $context = 'view'): array
         {
         }
         public function save_product_data(\WP_Post $post, \WP_REST_Request $request, bool $creating)
@@ -27796,6 +27910,28 @@ namespace StoreEngine\API {
         {
         }
     }
+    class ShippingDefaults extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'shipping-defaults';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permissions_check($request)
+        {
+        }
+        private function current(): array
+        {
+        }
+        public function get_defaults($request)
+        {
+        }
+        public function save_defaults($request)
+        {
+        }
+    }
     class Shipping extends \StoreEngine\API\AbstractRestApiController
     {
         public static function init()
@@ -27843,6 +27979,13 @@ namespace StoreEngine\API {
          * @see self::prepare_item_for_database
          */
         protected function prepare_item_for_save(\StoreEngine\Shipping\ShippingZone $shipping_zone, \WP_REST_Request $request)
+        {
+        }
+        /**
+         * Saves the order zones are matched in: the first zone whose region covers
+         * the customer's address wins, so the list order is the priority.
+         */
+        public function reorder_shipping_zones(\WP_REST_Request $request)
         {
         }
         public function delete_shipping_zone(\WP_REST_Request $request)
@@ -27996,6 +28139,106 @@ namespace StoreEngine\API {
         {
         }
     }
+    class TaxClasses extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'taxes/classes';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permissions_check()
+        {
+        }
+        public function get_items($request)
+        {
+        }
+        public function create_item($request)
+        {
+        }
+        public function delete_item($request)
+        {
+        }
+    }
+    class TaxPacks extends \StoreEngine\API\AbstractRestApiController
+    {
+        protected $rest_base = 'taxes/packs';
+        public static function init()
+        {
+        }
+        public function register_routes()
+        {
+        }
+        public function permissions_check()
+        {
+        }
+        /**
+         * The absolute path to the bundled tax-rate pack directory. Filterable so
+         * addons can register additional packs (e.g. a Kodezen-maintained pro pack
+         * with city/county breakdowns) without touching the core assets folder.
+         */
+        protected function get_packs_dir(): string
+        {
+        }
+        /**
+         * Lists all pack metadata (without the rate rows).
+         */
+        public function get_items($request)
+        {
+        }
+        /**
+         * Returns the full pack including its rate rows so the UI can preview before
+         * installing.
+         */
+        public function get_item($request)
+        {
+        }
+        /**
+         * Installs a pack. Each row is formatted through the normal
+         * Tax::_insert_tax_rate path so filters, caches, and format_* hooks run the
+         * same way they would for a hand-entered rate. Duplicates (country, state,
+         * class, name, priority) are skipped unless replace_existing is true, in
+         * which case the matching rows are deleted first.
+         */
+        public function install_item($request)
+        {
+        }
+        /**
+         * Looks up a pack by id across both the on-disk JSON files and anything
+         * contributed via the storeengine/tax_packs/list filter.
+         */
+        protected function resolve_pack(string $id)
+        {
+        }
+        protected function load_pack_file(string $file)
+        {
+        }
+        protected function summarise_pack(array $pack): array
+        {
+        }
+        protected function extract_countries(array $rates): array
+        {
+        }
+        /**
+         * Convert one pack row to the DB column shape Tax::_insert_tax_rate expects.
+         * Pack JSON uses short keys (`country`, `rate`, `name`, …) for readability;
+         * the DB uses `tax_rate_*` columns.
+         */
+        protected function normalize_row(array $raw): array
+        {
+        }
+        /**
+         * Returns the existing tax_rate_id if a row with the same identifying key
+         * exists, otherwise 0. Keyed on country+state+class+name+priority — the
+         * natural "same rate" shape. Postcodes/cities aren't considered because the
+         * current packs are country/state-level only; a merchant who later narrows
+         * a rate by postcode has knowingly diverged and shouldn't be touched.
+         */
+        protected function find_duplicate(array $row): int
+        {
+        }
+    }
     class Taxes extends \StoreEngine\API\AbstractRestApiController
     {
         /**
@@ -28011,6 +28254,47 @@ namespace StoreEngine\API {
          * Register the routes for the objects of the controller.
          */
         public function register_routes()
+        {
+        }
+        /**
+         * Streams every tax rate as CSV. Columns mirror the WooCommerce tax-rate CSV
+         * header shape so merchants moving between platforms don't have to re-map
+         * fields. shipping_rate is appended at the end as a StoreEngine-specific
+         * optional column — importers that don't know about it will just ignore it.
+         */
+        public function export_csv($request)
+        {
+        }
+        /**
+         * Pre-fetches all postcode/city locales keyed by tax_rate_id so the exporter
+         * doesn't issue one query per row. Multiple postcodes or cities are joined
+         * with `;` which is also what the importer accepts.
+         */
+        protected function fetch_all_locales(array $ids): array
+        {
+        }
+        /**
+         * Parses a CSV body (first row = header, columns in the shape export_csv
+         * emits) and inserts rows. Unknown columns are ignored. The import happens
+         * synchronously; for very large files the admin UI should chunk the CSV on
+         * the client — the endpoint handles any slice fed to it.
+         */
+        public function import_csv($request)
+        {
+        }
+        /**
+         * Maps CSV column header strings to our internal field names, accepting
+         * both human headings (`Country Code`) and raw column keys (`country`), so
+         * merchants editing the file in a spreadsheet don't have to preserve exact
+         * capitalisation.
+         */
+        protected function map_csv_header(array $header): array
+        {
+        }
+        protected function csv_row_to_tax_row(array $raw, array $col_map): array
+        {
+        }
+        protected function find_csv_duplicate(array $row): int
         {
         }
         public function permissions_check()
@@ -29089,6 +29373,8 @@ namespace StoreEngine\Classes {
             'product_physical_width' => '',
             'product_physical_height' => '',
             'product_physical_dimension_unit' => '',
+            'product_shipping_class' => 0,
+            'product_package' => '',
             'product_gallery_ids' => [],
             'product_downloadable_files' => [],
             'product_attributes_order' => [],
@@ -29377,6 +29663,26 @@ namespace StoreEngine\Classes {
         {
         }
         public function set_status(string $value)
+        {
+        }
+        public function get_shipping_class_id(): int
+        {
+        }
+        public function get_package_id(): string
+        {
+        }
+        public function set_package_id(string $value): void
+        {
+        }
+        public function set_shipping_class_id(int $value): void
+        {
+        }
+        /**
+         * Returns the shipping class term slug for this product, or '' when the
+         * product is unassigned. Flat-rate and other method types look up their
+         * per-class costs by slug, so expose both id and slug accessors.
+         */
+        public function get_shipping_class(): string
         {
         }
         public function set_shipping_type(string $value)
@@ -30179,6 +30485,14 @@ namespace StoreEngine\Classes {
          * @var CartItem[]
          */
         public array $cart_items = [];
+        /**
+         * Reasons a line was dropped from the cart during the last
+         * validate_cart_items() pass — in-memory only, for this request. Not
+         * persisted: re-populated fresh every time the cart is validated.
+         *
+         * @var array<int, array{name: string, reason: string}>
+         */
+        protected array $removed_item_notices = [];
         protected ?\StoreEngine\Classes\CartFees $fees = null;
         protected array $applied_coupons = [];
         protected array $coupon_discount_totals = [];
@@ -30278,6 +30592,22 @@ namespace StoreEngine\Classes {
         {
         }
         private function validate_cart_items(): void
+        {
+        }
+        /**
+         * Records why a line was dropped during validate_cart_items() and fires a
+         * hook so a theme, template or addon can surface it — core has no
+         * frontend notice system of its own to render it into directly.
+         */
+        private function note_removed_item(\StoreEngine\Classes\CartItem $cart_item, string $reason): void
+        {
+        }
+        /**
+         * Reasons lines were dropped on the last validate_cart_items() pass.
+         *
+         * @return array<int, array{name: string, reason: string}>
+         */
+        public function get_removed_item_notices(): array
         {
         }
         private function validate_coupon()
@@ -30655,7 +30985,7 @@ namespace StoreEngine\Classes {
          *
          * @return CartItem[]
          */
-        protected function get_items_needing_shipping(): array
+        public function get_items_needing_shipping(): array
         {
         }
         /**
@@ -32089,6 +32419,7 @@ namespace StoreEngine\Classes {
             '_storeengine_coupon_recurring_discount',
             '_storeengine_coupon_recurring_discount_limit',
             '_storeengine_coupon_auto_apply',
+            '_storeengine_coupon_free_shipping',
         ];
         /**
          * Coupon meta keys loaded into `$settings`.
@@ -36646,6 +36977,124 @@ namespace StoreEngine\Classes {
         {
         }
     }
+    final class Packages
+    {
+        public const APPLY_ASSIGNED = 'assigned';
+        public const OPTION = 'storeengine_packages';
+        public const TYPE_AUTOMATIC = 'automatic';
+        public const TYPE_OPTIONAL = 'optional';
+        public const CART_META = 'packages';
+        public const FEE_PREFIX = 'package_';
+        public const ORDER_FEE_META = '_storeengine_package';
+        public static function init(): void
+        {
+        }
+        /**
+         * Clean one charge from untrusted input.
+         *
+         * @param array<string, mixed> $charge Raw charge.
+         *
+         * @return array<string, mixed>|null Null when it has no name.
+         */
+        public static function sanitize_charge(array $charge): ?array
+        {
+        }
+        /**
+         * @param mixed $ids Raw id list.
+         *
+         * @return int[]
+         */
+        private static function clean_ids($ids): array
+        {
+        }
+        /**
+         * Keep only the cart items a charge applies to: all of them, or those whose
+         * shipping class, category (parent categories count) or product was chosen.
+         *
+         * @param array<string, mixed> $charge Stored charge.
+         * @param iterable<object>     $items  Cart items.
+         *
+         * @return object[]
+         */
+        public static function filter_items(array $charge, iterable $items): array
+        {
+        }
+        /**
+         * @return array<int, array<string, mixed>>
+         */
+        public static function get_all(): array
+        {
+        }
+        /**
+         * Replace every charge. Duplicate ids are made unique.
+         *
+         * @param array<int, array<string, mixed>> $charges Raw charges.
+         *
+         * @return array<int, array<string, mixed>> What was stored.
+         */
+        public static function save_all(array $charges): array
+        {
+        }
+        /**
+         * Amount of one charge for a set of cart items, or null when it doesn't apply
+         * (nothing to ship, or no table row matches).
+         *
+         * @param array<string, mixed> $charge Stored charge.
+         * @param iterable<object>     $items  Cart items that need shipping.
+         */
+        public static function amount_for(array $charge, iterable $items): ?float
+        {
+        }
+        /**
+         * Enabled charges that apply to this cart, each with its `amount`.
+         *
+         * @return array<int, array<string, mixed>>
+         */
+        public static function applicable(\StoreEngine\Classes\Cart $cart): array
+        {
+        }
+        /**
+         * Ids of the optional charges the shopper ticked.
+         *
+         * @return string[]
+         */
+        public static function selected(\StoreEngine\Classes\Cart $cart): array
+        {
+        }
+        /**
+         * Hooked to the cart fee calculation.
+         */
+        public static function add_fees(\StoreEngine\Classes\Cart $cart): void
+        {
+        }
+        /**
+         * Mark an order fee that came from an package, so documents can list
+         * it even if the charge is renamed or deleted later.
+         *
+         * @param object $item Order fee item.
+         * @param object $fee  Cart fee data.
+         */
+        public static function tag_order_fee($item, $fee): void
+        {
+        }
+        /**
+         * Names of the packages on an order, for packing documents.
+         *
+         * @return string[]
+         */
+        public static function names_on_order($order): array
+        {
+        }
+        /**
+         * Store which optional charges the shopper ticked, from checkout fields
+         * named `package_{id}`.
+         *
+         * @param array<string, mixed> $fields Checkout field payload.
+         */
+        public static function sync_from_fields(\StoreEngine\Classes\Cart $cart, array $fields): void
+        {
+        }
+    }
 }
 namespace StoreEngine\Classes\PaymentTokens {
     /**
@@ -37469,12 +37918,59 @@ namespace StoreEngine\Classes\Product {
         {
         }
         /**
+         * Resolve the default price of a child product (first by menu order).
+         *
+         * Used for bundle rows set to "All prices" (stored with price_id = 0).
+         *
+         * @param int $product_id Child product ID.
+         *
+         * @return int Price ID, or 0 when the product has no prices.
+         */
+        public static function resolve_child_price_id(int $product_id): int
+        {
+        }
+        /**
+         * Snapshot of a bundle price's license settings, saved on the order item
+         * as `_bundle_license` so later edits never change what past buyers get.
+         *
+         * @param int $bundle_price_id Price ID of the bundle the customer bought.
+         *
+         * @return array{
+         *     bundle_price_id:int,
+         *     enable_activation_limit:bool,
+         *     activation_limit:int,
+         *     prefix:string,
+         *     segments:string
+         * }
+         */
+        public static function get_license_snapshot(int $bundle_price_id): array
+        {
+        }
+        /**
+         * Save the `_bundle_license` snapshot on an order item when any bundle row takes its license
+         * from the bundle price, or the bundle price sets its own (custom) activation limit.
+         *
+         * @param object $item   Order item (OrderItemProduct).
+         * @param array  $bundles Rows from get_bundles() / the `_bundles` snapshot.
+         */
+        public static function maybe_add_license_snapshot($item, array $bundles): void
+        {
+        }
+        /**
+         * Whether any bundle row is set to "All prices" (stored price_id = 0).
+         */
+        public function has_all_prices_rows(): bool
+        {
+        }
+        /**
          * @return array<array{
          *     product_id: int,
          *     price_id: int,
          *     product_name:string,
          *     price:float,
-         *     price_name:string
+         *     price_name:string,
+         *     all_prices?:bool,
+         *     license_from_bundle?:bool
          * }>
          */
         public function get_bundles(): array
@@ -37535,6 +38031,49 @@ namespace StoreEngine\Classes\Product {
         {
         }
         public function get_aggregate_stock_quantity(): ?float
+        {
+        }
+        /**
+         * Without this override, AbstractProduct::get_stock_quantity() reads the
+         * (usually empty) parent-post stock meta on a variable product whose
+         * real stock lives on its variants — e.g. the storefront "Only N left"
+         * message and the REST payload never showed a number for any variable
+         * product.
+         *
+         * `edit` context is the exception: the admin product editor's "Overall
+         * stock quantity" field (the parent-level "shared by variants" fallback
+         * — see save_stock_fields()) reads and writes this same get/set pair
+         * directly. Returning the aggregate there instead of the raw parent
+         * value made that field unusable as soon as any variant also tracked
+         * its own stock — every load/save overwrote whatever the admin typed
+         * with the tracked variants' total.
+         */
+        public function get_stock_quantity(string $context = 'view'): ?float
+        {
+        }
+        /**
+         * Resolves which Variation a variation-scoped stock mutation should
+         * actually land on. Returns null when there isn't one that belongs to
+         * this product — callers fall back to the parent-level (shared stock)
+         * behavior in that case.
+         */
+        private function get_owned_variant(?int $variation_id): ?\StoreEngine\Classes\Variation
+        {
+        }
+        /**
+         * Without this override, AbstractProduct::reduce_stock() ignores
+         * $variation_id and silently decrements the parent post's own stock
+         * meta instead of the variation actually sold — see
+         * get_stock_quantity() above for why that number is meaningless once
+         * any variant tracks its own stock.
+         */
+        public function reduce_stock(float $qty, ?int $variation_id = null): float
+        {
+        }
+        /**
+         * @see reduce_stock() above.
+         */
+        public function increase_stock(float $qty, ?int $variation_id = null): float
         {
         }
     }
@@ -37721,6 +38260,61 @@ namespace StoreEngine\Classes {
         {
         }
         public static function sanitize_checkbox_field($boolean)
+        {
+        }
+    }
+    final class ShippingDefaults
+    {
+        public const TAXONOMY = 'product_shipping_class';
+        public const OPT_CLASS = 'storeengine_default_shipping_class';
+        public const OPT_PACKAGE = 'storeengine_default_package';
+        public const OPT_SEEDED = 'storeengine_shipping_defaults_seeded';
+        public const DEFAULT_SLUG = 'standard';
+        public const DEFAULT_PKG_ID = 'standard-package';
+        public static function init(): void
+        {
+        }
+        /**
+         * One-time, idempotent. Reuses an existing "standard" class / package
+         * rather than duplicating, and never overwrites a default the user chose.
+         */
+        public static function seed(): void
+        {
+        }
+        /**
+         * Default shipping class term id, or 0 when unset or the term is gone.
+         */
+        public static function get_class_id(): int
+        {
+        }
+        /**
+         * Default package id, or '' when unset or the package is gone.
+         */
+        public static function get_package_id(): string
+        {
+        }
+        /**
+         * @return true|\WP_Error
+         */
+        public static function set_class_id(int $id)
+        {
+        }
+        /**
+         * @return true|\WP_Error
+         */
+        public static function set_package_id(string $id)
+        {
+        }
+        /**
+         * Refuse to delete the default shipping class.
+         *
+         * @param mixed           $response Current response.
+         * @param array           $handler  Matched route handler.
+         * @param \WP_REST_Request $request  Request.
+         *
+         * @return mixed
+         */
+        public static function block_default_class_delete($response, $handler, $request)
         {
         }
     }
@@ -38507,6 +39101,45 @@ namespace StoreEngine\Classes {
         {
         }
         /**
+         * The Shipping tax class setting, with the unset default ('') read as
+         * "based on cart items" (the label the settings screen shows for it).
+         * An explicit choice is a class slug, e.g. 'standard' or 'reduced-rate'.
+         */
+        public static function get_shipping_tax_class_setting(): string
+        {
+        }
+        /**
+         * Tax on a per-order shipping cost in the cart.
+         *
+         * With the Shipping tax class setting on "based on cart items" and a cart
+         * that mixes tax classes, shipping follows the goods: see
+         * calc_shipping_tax_apportioned(). A fixed class, a single class or an
+         * empty cart keep the single-rate behaviour.
+         *
+         * @param float|string $cost Shipping cost, excluding tax.
+         *
+         * @return array Tax amounts keyed by tax rate id.
+         */
+        public static function calc_shipping_tax_for_cart($cost): array
+        {
+        }
+        /**
+         * Split a shipping cost across tax classes by item value and tax each part
+         * at its own class's rates. This is the EU/UK rule for mixed-rate baskets:
+         * shipping follows the goods it ships with. For example 10.00 shipping on a
+         * 50 item at 5% and a 50 item at 20% is 5.00 taxed at 5% and 5.00 at 20%.
+         *
+         * @param float                    $cost     Shipping cost, excluding tax.
+         * @param array<string, float>     $values   Item value keyed by tax class slug ('' = Standard).
+         * @param array<string, string>|null $location Country/state/postcode/city to match rates for;
+         *                                             null uses the customer's location.
+         *
+         * @return array Tax amounts keyed by tax rate id.
+         */
+        public static function calc_shipping_tax_apportioned(float $cost, array $values, ?array $location = null): array
+        {
+        }
+        /**
          * Searches for all matching country/state/postcode tax rates.
          *
          * @param array|string $args Args that determine the rate to find.
@@ -38915,9 +39548,16 @@ namespace StoreEngine\Classes\Tax {
         protected int $tax_rate_priority = 0;
         protected int $tax_rate_compound = 0;
         protected int $tax_rate_shipping = 0;
+        protected ?float $tax_rate_shipping_rate = null;
         protected int $tax_rate_order = 0;
         protected string $tax_rate_class = '';
-        protected array $formats = ['tax_rate_id' => '%d', 'tax_rate_country' => '%s', 'tax_rate_state' => '%s', 'tax_rate' => '%f', 'tax_rate_name' => '%s', 'tax_rate_priority' => '%d', 'tax_rate_compound' => '%d', 'tax_rate_shipping' => '%d', 'tax_rate_order' => '%d', 'tax_rate_class' => '%s'];
+        protected array $formats = ['tax_rate_id' => '%d', 'tax_rate_country' => '%s', 'tax_rate_state' => '%s', 'tax_rate' => '%f', 'tax_rate_name' => '%s', 'tax_rate_priority' => '%d', 'tax_rate_compound' => '%d', 'tax_rate_shipping' => '%d', 'tax_rate_shipping_rate' => '%f', 'tax_rate_order' => '%d', 'tax_rate_class' => '%s'];
+        public function get_tax_rate_shipping_rate(): ?float
+        {
+        }
+        public function set_tax_rate_shipping_rate(?float $tax_rate_shipping_rate): void
+        {
+        }
         public function save(array $args = [])
         {
         }
@@ -39747,6 +40387,25 @@ namespace StoreEngine {
         public static function ensure_stock_movements_vendor_column(): void
         {
         }
+        /**
+         * Adds `tax_rate_shipping_rate DECIMAL(8,4) NULL` to storeengine_tax_rates on
+         * installs that pre-date the per-rate shipping-tax override. NULL preserves
+         * the current behaviour (fall through to tax_rate_shipping flag + tax_rate),
+         * 0 means "no shipping tax on this rate", any other value is a percentage
+         * that overrides tax_rate for shipping lines only. Idempotent.
+         */
+        public static function ensure_tax_rate_shipping_rate_column(): void
+        {
+        }
+        /**
+         * Seeds the default `standard` tax class on a fresh install so the
+         * admin UI always has at least one class to show. Idempotent — a
+         * flag option gates the one-time run and the slug UNIQUE index
+         * is a second line of defence.
+         */
+        public static function ensure_tax_rate_classes_seeded(): void
+        {
+        }
         public function register_product_post_type()
         {
         }
@@ -40001,6 +40660,12 @@ namespace StoreEngine\Database {
         }
     }
     class CreateSubscriptions
+    {
+        public static function up($prefix, $charset_collate)
+        {
+        }
+    }
+    class CreateTaxRateClasses
     {
         public static function up($prefix, $charset_collate)
         {
@@ -40344,10 +41009,38 @@ namespace StoreEngine {
         public static function remove_empty_spaces($content, string $tag)
         {
         }
+        /**
+         * A product's shipping class is stored as post meta (the term id), not as a
+         * term relationship, so the term's own `count` is always 0. Report the real
+         * number of live products using the class instead.
+         *
+         * @param \WP_REST_Response $response Term response.
+         * @param \WP_Term          $term     Shipping class term.
+         *
+         * @return \WP_REST_Response
+         */
+        public static function set_shipping_class_product_count($response, $term)
+        {
+        }
         public static function save_post($post_id, \WP_Post $post)
         {
         }
         public static function delete_post($post_id, \WP_Post $post)
+        {
+        }
+        /**
+         * Permanently deleting a product left its variations (and anything
+         * addons key off variation_id, e.g. inventory-pro's per-location stock
+         * rows) behind forever — nothing ever cleaned them up. Confirmed live:
+         * a storeengine_location_stock row pointing at a deleted product id.
+         *
+         * Deletes each variation via Variation::delete() (not a raw DB query) so
+         * its own storeengine/variation/before_delete hook still fires and
+         * addons get their usual per-variant cleanup chance; fires a product-
+         * level hook too for any addon data keyed by product_id alone (e.g. a
+         * variation_id=0 location-stock row on a simple product).
+         */
+        public static function before_delete_product($post_id)
         {
         }
     }
@@ -40818,6 +41511,17 @@ namespace StoreEngine\Integrations {
          * @return void
          */
         public function subscription_status_updated(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, string $new_status)
+        {
+        }
+        /**
+         * Revokes access when a renewal charge fails and the subscription is left inactive.
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription
+         * @param mixed $failed_order
+         *
+         * @return void
+         */
+        public function subscription_renewal_failed(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, $failed_order = null)
         {
         }
         /**
@@ -42147,6 +42851,113 @@ namespace StoreEngine\Schedules {
         }
     }
 }
+namespace StoreEngine\Shipping {
+    final class Measurement
+    {
+        public const WEIGHT = 'weight';
+        public const VOLUME = 'volume';
+        public const CHARGEABLE_WEIGHT = 'chargeable_weight';
+        public const ITEM_COUNT = 'item_count';
+        public const SUBTOTAL = 'subtotal';
+        /**
+         * Divisor couriers commonly use for volumetric weight (cm3 per kg).
+         */
+        public const DEFAULT_VOLUMETRIC_DIVISOR = 5000;
+        /**
+         * Multipliers that bring a weight unit to kilograms.
+         */
+        private const KG_PER_UNIT = ['kg' => 1.0, 'g' => 0.001, 'lb' => 0.45359237, 'lbs' => 0.45359237, 'oz' => 0.028349523125];
+        /**
+         * Multipliers that bring a length unit to centimetres.
+         */
+        private const CM_PER_UNIT = ['cm' => 1.0, 'mm' => 0.1, 'm' => 100.0, 'in' => 2.54, 'yd' => 91.44];
+        /**
+         * The measurements a rate table can be based on.
+         *
+         * @return array<string, string> key => label (with its unit).
+         */
+        public static function bases(): array
+        {
+        }
+        /**
+         * Convert a weight to kilograms. An unknown unit is read as grams, the
+         * unit a product's weight defaults to.
+         */
+        public static function to_kg(float $value, string $unit): float
+        {
+        }
+        /**
+         * Convert a length to centimetres. An unknown unit is read as centimetres.
+         */
+        public static function to_cm(float $value, string $unit): float
+        {
+        }
+        /**
+         * Volume of one item in cm3. A missing side (0) gives 0, so a product with
+         * no dimensions adds no volume.
+         */
+        public static function item_volume_cm3(float $length, float $width, float $height, string $unit): float
+        {
+        }
+        /**
+         * Volumetric weight in kg for a volume in cm3.
+         */
+        public static function volumetric_weight_kg(float $volume_cm3, float $divisor): float
+        {
+        }
+        /**
+         * Measure a package.
+         *
+         * Each line is an array with these optional keys (missing = 0 / empty):
+         *  - qty            Quantity ordered.
+         *  - weight         Weight of ONE unit, in `weight_unit`.
+         *  - weight_unit    g, kg, lb, lbs, oz.
+         *  - length, width, height  Size of ONE unit, in `dimension_unit`.
+         *  - dimension_unit cm, mm, m, in, yd.
+         *  - line_total     Line total excluding tax.
+         *  - class_id       Shipping class term id (0 = none).
+         *
+         * Options:
+         *  - divisor          Volumetric divisor, cm3 per kg (default 5000).
+         *  - packaging_weight Extra weight in kg added once per package (a box, filler).
+         *
+         * @param array<int, array<string, mixed>> $lines Package lines.
+         * @param array<string, float|int>         $args  Options.
+         *
+         * @return array{weight: float, volume: float, volumetric_weight: float, chargeable_weight: float, item_count: float, subtotal: float, class_counts: array<int, float>}
+         */
+        public static function measure(array $lines, array $args = []): array
+        {
+        }
+        /**
+         * The value of one measurement basis from a measure() result.
+         *
+         * @param array<string, mixed> $measured Result of measure().
+         */
+        public static function value_for_basis(array $measured, string $basis): float
+        {
+        }
+        /**
+         * Cost for a measured value from a rate table.
+         *
+         * Rows are matched as from <= value < to; an empty `to` means no upper
+         * limit. When the value is past the last row that has an upper limit, an
+         * optional extra charge applies: the last row's cost plus `extra_cost` for
+         * every started `extra_step` beyond that limit. With no rows at all, an
+         * extra charge alone prices every started step (a pure per-unit rate).
+         *
+         * @param float                              $value      Measured value.
+         * @param array<int, array<string, mixed>>   $rows       Rows: from, to ('' = no limit), cost.
+         * @param float                              $extra_cost Charge per extra step (0 = none).
+         * @param float                              $extra_step Size of one extra step.
+         *
+         * @return float|null Cost, or null when no row applies (the method is then not offered).
+         */
+        public static function cost_from_rows(float $value, array $rows, float $extra_cost = 0.0, float $extra_step = 1.0): ?float
+        {
+        }
+    }
+}
 namespace StoreEngine\Shipping\Methods {
     /**
      * Base shipping-method concept.
@@ -42217,6 +43028,18 @@ namespace StoreEngine\Shipping\Methods {
         {
         }
         public function save()
+        {
+        }
+        /**
+         * When a method is converted to another type (say Flat rate to Table rate)
+         * the edit form still carries the old default name. A name that is just
+         * another method type's default title ("Flat rate", "Free shipping"...)
+         * would make checkout show the wrong kind of method, so it is replaced with
+         * this type's own title. A name the merchant wrote themselves is kept.
+         *
+         * @param string $name Submitted name.
+         */
+        protected function name_for_save(string $name): string
         {
         }
         public function delete(bool $force_delete = true): bool
@@ -42454,12 +43277,166 @@ namespace StoreEngine\Shipping\Methods {
         public function set_cost(string $value)
         {
         }
+        public function get_no_class_cost(string $context = 'view'): string
+        {
+        }
+        public function set_no_class_cost(string $value): void
+        {
+        }
+        public function get_class_aggregation(string $context = 'view'): string
+        {
+        }
+        public function set_class_aggregation(string $value): void
+        {
+        }
+        public function get_class_costs(string $context = 'view'): array
+        {
+        }
+        public function set_class_costs(array $value): void
+        {
+        }
+        /**
+         * Walks the package and returns {class_slug|'': charge} for every class
+         * actually present. A missing or empty per-class expression falls back to
+         * no_class_cost (for unclassified items) or to the base cost (for others);
+         * this means "no cost configured" → 0, not an error, so merchants aren't
+         * forced to fill every class to get a rate.
+         *
+         * @return array<string, float>
+         */
+        protected function calculate_class_costs(array $package): array
+        {
+        }
+        protected function aggregate_class_charges(array $charges): float
+        {
+        }
+        public function handle_save_request(array $payload)
+        {
+        }
+    }
+    class ShippingFreeShipping extends \StoreEngine\Shipping\Methods\ShippingMethod
+    {
+        const ID = 'free_shipping';
+        public function __construct($read = 0)
+        {
+        }
+        protected function init_admin_fields()
+        {
+        }
+        /**
+         * Overrides is_available to apply the gate. Returning false here hides the
+         * method entirely so the storefront doesn't advertise free shipping the
+         * customer isn't eligible for.
+         */
+        public function is_available(array $package = []): bool
+        {
+        }
+        public function calculate_shipping(array $package = [])
+        {
+        }
+        public function get_requires(string $context = 'view'): string
+        {
+        }
+        public function set_requires(string $value): void
+        {
+        }
+        public function get_min_amount(string $context = 'view'): float
+        {
+        }
+        public function set_min_amount($value): void
+        {
+        }
+        public function handle_save_request(array $payload)
+        {
+        }
+    }
+    class ShippingTableRate extends \StoreEngine\Shipping\Methods\ShippingMethod
+    {
+        const ID = 'table_rate';
+        public function __construct($read = 0)
+        {
+        }
+        protected function init_admin_fields()
+        {
+        }
+        public function calculate_shipping(array $package = [])
+        {
+        }
+        public function get_basis(string $context = 'view'): string
+        {
+        }
+        public function get_apply_to(string $context = 'view'): string
+        {
+        }
+        /**
+         * @return int[]
+         */
+        public function get_apply_ids(string $context = 'view'): array
+        {
+        }
+        public function get_rows(string $context = 'view'): array
+        {
+        }
+        public function get_extra_cost(string $context = 'view'): float
+        {
+        }
+        public function get_extra_step(string $context = 'view'): float
+        {
+        }
+        public function get_packaging_weight(string $context = 'view'): float
+        {
+        }
+        public function get_volumetric_divisor(string $context = 'view'): float
+        {
+        }
+        /**
+         * Keep numeric rows only, as { from, to, cost }, ordered by "from". A blank
+         * "to" stays blank (no upper limit). Rows with no cost are dropped.
+         *
+         * @param mixed $rows Raw rows from the request.
+         *
+         * @return array<int, array{from: float, to: float|string, cost: float}>
+         */
+        public static function sanitize_rows($rows): array
+        {
+        }
         public function handle_save_request(array $payload)
         {
         }
     }
 }
 namespace StoreEngine\Shipping {
+    final class PackageLines
+    {
+        public const APPLY_TO = ['all', 'classes', 'categories', 'products'];
+        /**
+         * Keep only the items a rule applies to: all of them, or those whose
+         * shipping class, category (parent categories count) or product was chosen.
+         *
+         * @param iterable<object> $items Cart items (product_id).
+         * @param string           $mode  One of self::APPLY_TO.
+         * @param int[]            $ids   Chosen class, category or product ids.
+         *
+         * @return object[]
+         */
+        public static function filter_items(iterable $items, string $mode, array $ids): array
+        {
+        }
+        /**
+         * Cart items as Measurement lines.
+         *
+         * Variations have no weight or size of their own, so the product's values
+         * are used. A product sold by weight has its quantity as the weight (kg, g,
+         * lb or oz), so that quantity is what is measured.
+         *
+         * @param iterable<object> $items Cart items (product_id, quantity, line_total, price).
+         *
+         * @return array<int, array<string, mixed>>
+         */
+        public static function from_items(iterable $items): array
+        {
+        }
+    }
     /**
      * Represents a single shipping rate.
      */
@@ -48242,6 +49219,12 @@ namespace {
     {
     }
     function storeengine_checkout_form_field_shipping_address()
+    {
+    }
+    /**
+     * Tick-boxes for optional packages (gift wrap, packaging).
+     */
+    function storeengine_checkout_packages()
     {
     }
     function storeengine_checkout_form_field_billing_address()
