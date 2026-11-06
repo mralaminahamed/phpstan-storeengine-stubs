@@ -608,12 +608,133 @@ namespace StoreEngine\Addons\Affiliate\Ajax {
     }
 }
 namespace StoreEngine\Addons\Affiliate {
+    class Api
+    {
+        private const NAMESPACE = STOREENGINE_PLUGIN_SLUG . '/v1';
+        private const BASE = 'pos/affiliate';
+        public static function init(): void
+        {
+        }
+        public static function register_routes(): void
+        {
+        }
+        // --- permission callbacks ---
+        public static function permission_logged_in()
+        {
+        }
+        public static function permission_attribute(\WP_REST_Request $request)
+        {
+        }
+        // --- handlers ---
+        /**
+         * Idempotent provision: return the signed-in user's affiliate record,
+         * creating one (and a primary referral row) on first call. The POS calls
+         * this on first cloud connect so it has a referral link to display.
+         */
+        public static function provision()
+        {
+        }
+        /**
+         * Signed-in user's affiliate summary + recent commissions. Returns 404 if
+         * the user is not an affiliate (never auto-creates — use `/provision`).
+         */
+        public static function get_me()
+        {
+        }
+        public static function get_commissions(\WP_REST_Request $request)
+        {
+        }
+        public static function get_referrals(\WP_REST_Request $request)
+        {
+        }
+        public static function get_payouts()
+        {
+        }
+        public static function get_public_settings()
+        {
+        }
+        /**
+         * Attribute a user to an affiliate. Resolves `affiliate_id` from the
+         * supplied `referral_code` when the code form is used. Idempotent: first
+         * referrer wins per user (CookieHandler::attribute_user_to_affiliate).
+         */
+        public static function attribute(\WP_REST_Request $request)
+        {
+        }
+        // --- formatters ---
+        private static function format_me_payload(array $affiliate): array
+        {
+        }
+        private static function format_commission($row): array
+        {
+        }
+    }
     class CookieHandler
     {
+        /**
+         * User-meta keys that persist referral attribution past cookie expiry/clear.
+         * Written on user_register (and on first order checkout for guests who
+         * create an account later), read on order_processed when the cookie is
+         * missing. These are what makes the referral stick for lifetime commissions.
+         */
+        public const META_REFERRER_AFFILIATE = '_storeengine_affiliate_referrer_id';
+        public const META_REFERRER_REFERRAL = '_storeengine_affiliate_referral_id';
+        public const META_REFERRER_TRACK = '_storeengine_affiliate_track_id';
+        public const META_REFERRED_AT = '_storeengine_affiliate_referred_at';
         public static function init()
         {
         }
+        /**
+         * On new user creation, if the affiliate referral cookie is present and
+         * valid, write the referrer onto the user as permanent meta. Idempotent:
+         * never overwrites existing meta.
+         */
+        public function attach_referrer_on_registration(int $user_id): void
+        {
+        }
+        /**
+         * Attribute an existing user to an affiliate via a direct call (e.g. from
+         * the POS referral REST endpoint or an admin tool). Returns true on write,
+         * false if the user is already attributed or inputs are invalid. Never
+         * overwrites existing attribution — the first referrer wins per user.
+         *
+         * @param int $user_id      WP user to attribute.
+         * @param int $affiliate_id Affiliate to credit.
+         * @param int $referral_id  Optional referral row id (campaign/link).
+         * @param int $track_id     Optional click-track id to mark converted.
+         */
+        public static function attribute_user_to_affiliate(int $user_id, int $affiliate_id, int $referral_id = 0, int $track_id = 0): bool
+        {
+        }
+        /**
+         * Return the stored referrer attribution for an order's buyer, used as a
+         * fallback when the referral cookie has been lost between sign-up and the
+         * paid order. Returns null when the buyer has no attribution.
+         *
+         * @return array{affiliate_id:int, referral_id:int, track_id:int}|null
+         */
+        public static function get_persisted_attribution_for_order(\StoreEngine\Classes\Order $order): ?array
+        {
+        }
         public function set_affiliate_code_cookie()
+        {
+        }
+        /**
+         * HMAC over the attribution fields, so a visitor can't hand-craft the
+         * cookie to credit (or become the upline of) an arbitrary affiliate.
+         *
+         * @param array $data referral_id, affiliate_id, track_id.
+         */
+        public static function cookie_signature(array $data): string
+        {
+        }
+        /**
+         * The verified referral cookie, or null when absent, malformed, unsigned
+         * (pre-signing cookies are dropped once) or tampered with.
+         *
+         * @return array{referral_id:int, affiliate_id:int, track_id:int}|null
+         */
+        public static function read_cookie(): ?array
         {
         }
         public function set_affiliate_cookie($cookie_data)
@@ -627,7 +748,7 @@ namespace StoreEngine\Addons\Affiliate {
          * by WP user id (logged-in purchase) or by billing email (guest checkout
          * using the affiliate's own email).
          */
-        protected static function is_self_referral(\StoreEngine\Classes\Order $order, int $affiliate_id): bool
+        public static function is_self_referral(\StoreEngine\Classes\Order $order, int $affiliate_id): bool
         {
         }
     }
@@ -659,6 +780,25 @@ namespace StoreEngine\Addons\Affiliate\Database {
         {
         }
         /**
+         * Make commission_type / commission_rate nullable so an affiliate without
+         * an explicit override follows the global settings. Older stores copied the
+         * global type/rate into every row at signup and nothing ever wrote a real
+         * per-affiliate value, so those copies are reset to NULL in the same step —
+         * otherwise changing the global rate would never reach existing affiliates.
+         * Runs once: no-op after the column already allows NULL.
+         */
+        private static function ensure_commission_override_nullable(string $table_name): void
+        {
+        }
+        /**
+         * Widen `commission_rate` to DECIMAL(7,2) in stores created before fractional
+         * rates were supported. Values up to 99999.99 fit either as a percentage
+         * (e.g. 20.5) or a flat amount in minor currency. No-op if already decimal.
+         */
+        private static function ensure_commission_rate_decimal(string $table_name): void
+        {
+        }
+        /**
          * Bring an existing `status` column up to the full ENUM. Runs on the
          * version-triggered schema re-sync; no-op once already widened.
          */
@@ -669,6 +809,30 @@ namespace StoreEngine\Addons\Affiliate\Database {
     class CreateCommission
     {
         public static function up($prefix, $charset_collate)
+        {
+        }
+        /**
+         * Add 1.3 columns (source, external_ref, parent_commission_id,
+         * period_start, period_end) when upgrading a pre-1.3 store. Each ADD COLUMN
+         * is wrapped in a presence check so this is safe to re-run.
+         */
+        private static function ensure_columns(string $table_name): void
+        {
+        }
+        /**
+         * Add UNIQUE(order_id, source) on upgrade. Dedupes pre-existing duplicate
+         * (order_id, source='order') rows produced by the pre-1.3 race by
+         * soft-rejecting the losers, so the ADD UNIQUE always succeeds and the
+         * audit trail survives.
+         */
+        private static function ensure_unique_order_source(string $table_name): void
+        {
+        }
+        /**
+         * Add UNIQUE(external_ref). NULL values are not constrained by MySQL's
+         * UNIQUE semantics, so legacy rows without an external_ref coexist freely.
+         */
+        private static function ensure_unique_external_ref(string $table_name): void
         {
         }
     }
@@ -721,7 +885,29 @@ namespace StoreEngine\Addons\Affiliate {
         public static function get_commission_amount(float $total_amount = 0, ?int $affiliate_id = null)
         {
         }
+        /**
+         * Clamp a single commission amount by the admin-configured per-referral and
+         * per-month caps. Zero on either cap means "no cap".
+         *
+         * Per-month cap is calculated against the running sum of this affiliate's
+         * commissions created in the current calendar month (statuses pending /
+         * approved / paid — rejected rows are excluded). If adding this commission
+         * would exceed the cap, it is reduced to the remaining headroom; past the
+         * cap it is clamped to zero and the row is still written so the admin can
+         * see the capped event.
+         */
+        public static function apply_commission_caps(float $amount, ?int $affiliate_id): float
+        {
+        }
         public static function format_payment_method($payment_method = null): string
+        {
+        }
+        /**
+         * Return the affiliate's saved withdrawal method key (paypal|echeck|bank)
+         * only when it is still enabled by the admin and its payout details are
+         * filled in. Empty string means the affiliate can't withdraw yet.
+         */
+        public static function get_usable_withdraw_method(int $user_id): string
         {
         }
         /**
@@ -764,13 +950,44 @@ namespace StoreEngine\Addons\Affiliate {
         {
         }
         /**
-         * Reverse a commission when its order is refunded / cancelled / failed.
-         *
-         * An approved commission is clawed back from the affiliate's totals and
-         * available balance. A commission already paid out is flagged rejected but
-         * the withdrawn funds are left untouched (they cannot be reclaimed here).
+         * Full-refund hook: reverse the whole commission tied to this order
+         * (source = 'order').
          */
-        protected function reverse_commission_for_order(\StoreEngine\Classes\Order $order)
+        public function handle_full_refund($order_id, $refund_id = 0)
+        {
+        }
+        /**
+         * Partial-refund hook: reverse the commission in proportion to the share
+         * of the order's total that has now been refunded. A $100 order with a $25
+         * refund pulls back 25% of the current commission amount from the
+         * affiliate's balance and lowers the commission row by that same amount.
+         *
+         * The commission row itself is kept in its current status (pending /
+         * approved / paid) so the admin can still see it; multiple partial refunds
+         * recompute each time against the latest total_refunded, so repeated calls
+         * stay idempotent to within one adjustment.
+         */
+        public function handle_partial_refund($order_id, $refund_id = 0, $remaining_refundable = 0.0)
+        {
+        }
+        /**
+         * Reverse a commission by `fraction` (0..1) of its current commission_amount.
+         *
+         * - Full reversal (fraction >= 1): clawback the full approved amount, mark
+         *   the commission `rejected`.
+         * - Partial reversal: clawback `fraction × current_amount`, drop the
+         *   commission_amount accordingly, keep the status.
+         *
+         * Idempotent for the full case (a rejected commission is skipped). Partial
+         * reversals recompute against `get_total_refunded()` on each call, so firing
+         * the partial hook twice for the same aggregated refund state is a no-op in
+         * practice.
+         *
+         * A commission already in `paid` status is flagged rejected on a full
+         * reversal but the withdrawn funds are not reclaimed from the affiliate —
+         * surfaced via the commission_reversed action so stores can act on it.
+         */
+        protected function reverse_commission_for_order(\StoreEngine\Classes\Order $order, float $fraction)
         {
         }
         public function dashboard_menu_items(array $items): array
@@ -828,8 +1045,10 @@ namespace StoreEngine\Addons\Affiliate\Models {
         }
         /**
          * Claw back a reversed commission from lifetime totals and available
-         * balance. Balance is floored at zero so a reversal that lands after the
-         * funds were already withdrawn cannot push the balance negative.
+         * balance. The balance is NOT floored: when the funds were already
+         * withdrawn the balance goes negative, and reserve_balance()'s
+         * `current_balance >= amount` guard then blocks withdrawals until new
+         * earnings pay the debt back — i.e. it is deducted from the next payout.
          */
         public static function reverse_commission(int $affiliate_id, float $amount): bool
         {
@@ -917,6 +1136,13 @@ namespace StoreEngine\Addons\Affiliate\models {
 namespace StoreEngine\Addons\Affiliate\Models {
     class Commission
     {
+        /**
+         * Columns that can be written through save()/update() with their wpdb
+         * placeholder types. Keep in sync with the commissions schema so inserts
+         * and updates get the right types instead of the pre-1.3 all-strings
+         * default (which silently round-tripped numerics through strings).
+         */
+        private const COLUMN_FORMATS = ['affiliate_id' => '%d', 'order_id' => '%d', 'source' => '%s', 'external_ref' => '%s', 'parent_commission_id' => '%d', 'period_start' => '%s', 'period_end' => '%s', 'original_amount' => '%f', 'commission_amount' => '%f', 'status' => '%s'];
         public static function get_commission($args = [])
         {
         }
@@ -953,6 +1179,15 @@ namespace StoreEngine\Addons\Affiliate\models {
         {
         }
         public static function update(int $id, array $args)
+        {
+        }
+        /**
+         * Cancel a payout only while it is still pending. The status check is part
+         * of the UPDATE so concurrent admin/affiliate actions can't both win.
+         *
+         * @return bool True when this call performed the pending -> cancelled move.
+         */
+        public static function cancel_if_pending(int $id): bool
         {
         }
         /**
@@ -1077,6 +1312,9 @@ namespace StoreEngine\Addons\Affiliate\Post {
         public function save_frontend_dashboard_withdraw_settings($payload)
         {
         }
+        public function cancel_affiliate_withdrawal($payload)
+        {
+        }
         public function affiliate_earning_withdrawal($payload)
         {
         }
@@ -1097,11 +1335,14 @@ namespace StoreEngine\Addons\Affiliate {
             'edit_others_storeengine_affiliates',
             'read_private_storeengine_affiliates',
             // common WP
-            'edit_post',
-            'edit_posts',
             'read',
-            'edit_others_posts',
         ];
+        /**
+         * Core caps older versions granted the role. edit_posts/edit_others_posts let
+         * every affiliate edit any post in wp-admin (and sent them there on login);
+         * the affiliate area is the frontend dashboard, so strip them from the role.
+         */
+        const REVOKED_CAPS = ['edit_post', 'edit_posts', 'edit_others_posts'];
         public static function add_affiliate_role()
         {
         }
@@ -2684,6 +2925,7 @@ namespace StoreEngine\Addons\Couriers\Classes {
         }
         /**
          * Group an order's line items by vendor (product post_author).
+         *
          * @return array<int, array<int, mixed>>  vendor_id => list of line items
          */
         protected static function group_items_by_vendor($order): array
@@ -7469,7 +7711,7 @@ namespace StoreEngine\Addons\EuCompliance {
         }
         /**
          * Persist a consent log row per enabled checkbox (GDPR burden-of-proof) and
-         * mirror a compact summary onto the order. Syncs newsletter opt-ins to GemCRM.
+         * mirror a compact summary onto the order.
          *
          * @param \StoreEngine\Classes\Order $order   Placed order.
          * @param array                      $payload Checkout payload.
@@ -7487,11 +7729,8 @@ namespace StoreEngine\Addons\EuCompliance {
         private function read_submitted_consent(array $data): array
         {
         }
-        private function sync_newsletter_to_gemcrm($order)
-        {
-        }
         /* ---------------------------------------------------------------------
-         * Feature 4 — AGB / Widerrufsbelehrung PDF attachments
+         * Feature 4 — Terms & Conditions / Widerrufsbelehrung PDF attachments
          * ------------------------------------------------------------------- */
         public function attach_legal_documents(array $mail_arguments, string $email_name, array $args): array
         {
@@ -9597,6 +9836,7 @@ namespace StoreEngine\Addons\Invoice\PDF {
         }
         /**
          * Get mPDF settings.
+         *
          * @return array
          */
         public function get_config(): array
@@ -9685,8 +9925,14 @@ namespace StoreEngine\Addons\Labels {
         }
         /**
          * One query for every row's labels instead of one per order.
+         *
+         * `$orders` is intentionally untyped: do_action() unwraps a single-object
+         * array (`[ $order ]`) into the bare object, so a list with exactly one
+         * order would otherwise hit a TypeError.
+         *
+         * @param array|object $orders Order list, or the lone order WP unwrapped.
          */
-        public static function rest_collection_prefetch(array $orders, $request): void
+        public static function rest_collection_prefetch($orders, $request): void
         {
         }
         /**
@@ -10967,13 +11213,24 @@ namespace StoreEngine\Addons\MultiCurrency\Classes {
         public function __construct()
         {
         }
+        /**
+         * Re-price cart items when the active currency differs from the one the
+         * cart was last priced in (stored in cart meta). validate_items() rebuilds
+         * each item's price from the base DB price through the display-price
+         * filters, so it is safe to run on carts of unknown origin.
+         *
+         * @param \StoreEngine\Classes\Cart $cart
+         */
+        public function reprice_cart_for_active_currency($cart): void
+        {
+        }
         // ═══════════════════════════════════════════════════════════════════════════
         // DISPLAY CURRENCY FILTERS (frontend / non-checkout pages)
         // ═══════════════════════════════════════════════════════════════════════════
         public function filter_active_currency(string $base_currency): string
         {
         }
-        public function convert_display_price(float $price, $context): float
+        public function convert_display_price(float $price, $context, $product_id = 0): float
         {
         }
         public function set_display_currency_in_args(array $args): array
@@ -13031,6 +13288,7 @@ namespace StoreEngine\Payment\Gateways {
         }
         /**
          * Get token id from checkout request.
+         *
          * @return int|'new'
          */
         public function get_selected_token_from_request()
@@ -13193,6 +13451,21 @@ namespace StoreEngine\Addons\Paddle {
          * @return bool|\WP_Error
          */
         public function process_refund($order_id, $amount = null, $reason = '')
+        {
+        }
+        /**
+         * How the order's coupons should carry over to subscription renewals in Paddle.
+         *
+         * Paddle takes one discount per transaction, so it only recurs when every
+         * coupon on the order is a recurring-discount coupon; otherwise only the first
+         * payment is discounted. A single unrestricted percentage coupon is sent as a
+         * percentage so renewals are discounted by the same share of the renewal price.
+         *
+         * @param \StoreEngine\Classes\Order $order Order the Paddle transaction is for.
+         *
+         * @return array{recurring: bool, intervals: int|null, percentage: string|null}
+         */
+        protected function get_recurring_discount_terms(\StoreEngine\Classes\Order $order): array
         {
         }
         /**
@@ -13422,7 +13695,18 @@ namespace StoreEngine\Addons\Paddle {
         public function get_customer_email(string $customer_id): string
         {
         }
-        public function create_discount(int $order_id, array $coupons)
+        /**
+         * Create a Paddle discount for an order's coupons.
+         *
+         * @param int                                                                     $order_id Order id.
+         * @param array<string, float>                                                    $coupons  Coupon code => discount amount.
+         * @param array{recurring?: bool, intervals?: int|null, percentage?: string|null} $terms    How the discount carries over to subscription renewals.
+         *                                                                                           `intervals` is the number of billing periods
+         *                                                                                           (first one included), null for no limit.
+         *                                                                                           `percentage` sends a percentage discount instead
+         *                                                                                           of a flat amount.
+         */
+        public function create_discount(int $order_id, array $coupons, array $terms = [])
         {
         }
     }
@@ -20311,14 +20595,14 @@ namespace StoreEngine\Classes {
         public function is_paid($context = 'view'): bool
         {
         }
-        //	/**
-        //	 * Returns if an order has been paid for based on the order status.
-        //	 *
-        //	 * @return bool
-        //	 */
-        //	public function is_paid(): bool {
-        //		return apply_filters( 'storeengine/order_is_paid', $this->has_status( OrderStatus::get_is_paid_statuses() ), $this );
-        //	}
+        //  /**
+        //   * Returns if an order has been paid for based on the order status.
+        //   *
+        //   * @return bool
+        //   */
+        //  public function is_paid(): bool {
+        //      return apply_filters( 'storeengine/order_is_paid', $this->has_status( OrderStatus::get_is_paid_statuses() ), $this );
+        //  }
         /**
          * Maybe set date completed.
          *
@@ -21660,7 +21944,6 @@ namespace StoreEngine\Classes {
          *
          * @return void
          * @see get_date_from_gmt can be used.
-         *
          */
         public function set_order_placed_date($value = null)
         {
@@ -22457,30 +22740,30 @@ namespace StoreEngine\Addons\Stripe {
         public function create_payment_intent(\StoreEngine\Classes\Order $order, ?float $amount = null, ?string $stripe_customer_id = null, ?string $payment_method_id = null, array $extra = []): \StoreEngine\Stripe\PaymentIntent
         {
         }
-        //	public function create_payment_intent_and_charge_for_subscription( $subscription ): PaymentIntent {
-        //		try {
-        //			$this->stripe_client->paymentMethods->attach( $subscription['meta']['stripe_payment_method_id'], [ 'customer' => $subscription['meta']['stripe_customer_id'] ] );
-        //			$previousPaymentIntents = $this->stripe_client->paymentIntents->retrieve( $subscription['meta']['stripe_payment_intent_id'] );
+        //  public function create_payment_intent_and_charge_for_subscription( $subscription ): PaymentIntent {
+        //      try {
+        //          $this->stripe_client->paymentMethods->attach( $subscription['meta']['stripe_payment_method_id'], [ 'customer' => $subscription['meta']['stripe_customer_id'] ] );
+        //          $previousPaymentIntents = $this->stripe_client->paymentIntents->retrieve( $subscription['meta']['stripe_payment_intent_id'] );
         //
-        //			return $this->stripe_client->paymentIntents->create( [
-        //				// As it's cents, it would not be 1000
-        //				'amount'                    => self::get_stripe_amount( $subscription['total_amount'], $previousPaymentIntents->currency ),
-        //				'currency'                  => $previousPaymentIntents->currency,
-        //				'automatic_payment_methods' => [
-        //					'enabled'         => true,
-        //					'allow_redirects' => 'never',
-        //				],
-        //				'description'               => 'Renewal Payment for ' . get_bloginfo( 'name' ) . ' subscription-' . $subscription['id'],
-        //				'customer'                  => $subscription['meta']['stripe_customer_id'],
-        //				'setup_future_usage'        => 'on_session',
-        //				// 'off_session' for one-time payments
-        //				'payment_method'            => $subscription['meta']['stripe_payment_method_id'],
-        //				'confirm'                   => true,
-        //			] );
-        //		} catch ( ApiErrorException $e ) {
-        //			throw StoreEngineException::from_stripe_api_error( $e, 'failed-to-get-payment-intent' );
-        //		}
-        //	}
+        //          return $this->stripe_client->paymentIntents->create( [
+        //              // As it's cents, it would not be 1000
+        //              'amount'                    => self::get_stripe_amount( $subscription['total_amount'], $previousPaymentIntents->currency ),
+        //              'currency'                  => $previousPaymentIntents->currency,
+        //              'automatic_payment_methods' => [
+        //                  'enabled'         => true,
+        //                  'allow_redirects' => 'never',
+        //              ],
+        //              'description'               => 'Renewal Payment for ' . get_bloginfo( 'name' ) . ' subscription-' . $subscription['id'],
+        //              'customer'                  => $subscription['meta']['stripe_customer_id'],
+        //              'setup_future_usage'        => 'on_session',
+        //              // 'off_session' for one-time payments
+        //              'payment_method'            => $subscription['meta']['stripe_payment_method_id'],
+        //              'confirm'                   => true,
+        //          ] );
+        //      } catch ( ApiErrorException $e ) {
+        //          throw StoreEngineException::from_stripe_api_error( $e, 'failed-to-get-payment-intent' );
+        //      }
+        //  }
         /**
          * Map a StoreEngine billing duration type to a Stripe recurring interval.
          *
@@ -22572,6 +22855,18 @@ namespace StoreEngine\Addons\Stripe {
          * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
          */
         public function create_subscription(string $customer_id, array $items, string $default_payment_method, array $args = []): \StoreEngine\Stripe\Subscription
+        {
+        }
+        /**
+         * Take one coupon off a Stripe subscription, leaving any other discounts in place.
+         *
+         * @param string $subscription_id Stripe subscription id.
+         * @param string $coupon_name     Name the coupon was created with (the StoreEngine coupon code).
+         *
+         * @return bool Whether a matching discount was found and removed.
+         * @throws \StoreEngine\Classes\Exceptions\StoreEngineException
+         */
+        public function remove_subscription_discount(string $subscription_id, string $coupon_name): bool
         {
         }
         /**
@@ -23048,6 +23343,33 @@ namespace StoreEngine\Addons\Stripe {
          * @return array{created:string[], error:?\WP_Error}
          */
         public static function create_for_order(\StoreEngine\Classes\Order $order, string $customer_id, string $payment_method_id, array $extra_invoice_items = []): array
+        {
+        }
+        /**
+         * Coupons applied to the parent order, as discounts for one Stripe subscription.
+         *
+         * Stripe bills the clean recurring price, so without this the first invoice (and
+         * every renewal) ignored the coupon the customer paid with. A recurring-discount
+         * coupon stays on the Stripe subscription (`forever`) until remove_exhausted_coupon()
+         * takes it off; any other coupon only discounts the first invoice (`once`).
+         *
+         * @param \StoreEngine\Classes\Order        $order        Parent order.
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription StoreEngine subscription being created in Stripe.
+         * @param string       $currency     Lower-case currency code.
+         *
+         * @return array<int, array{name: string, amount: float, duration: string}>
+         */
+        protected static function build_discounts(\StoreEngine\Classes\Order $order, \StoreEngine\Addons\Subscription\Classes\Subscription $subscription, string $currency): array
+        {
+        }
+        /**
+         * Remove a recurring coupon from the Stripe subscription once its renewals
+         * have all been paid, so Stripe goes back to the full price.
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription StoreEngine subscription.
+         * @param string       $code         Coupon code that ran out.
+         */
+        public static function remove_exhausted_coupon($subscription, $code): void
         {
         }
         /**
@@ -23675,7 +23997,9 @@ namespace StoreEngine\Addons\Subscription\Traits {
 namespace StoreEngine\Addons\Subscription\API\Controllers {
     class Create extends \StoreEngine\Addons\Subscription\API\Controllers\Abstracts\SubscriptionController
     {
-        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper, \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema, \StoreEngine\Addons\Subscription\Traits\Scheduler;
+        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper;
+        use \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
+        use \StoreEngine\Addons\Subscription\Traits\Scheduler;
         protected string $route = '';
         /**
          * @param \WP_REST_Request $request
@@ -23706,7 +24030,9 @@ namespace StoreEngine\Addons\Subscription\API\Controllers {
     }
     class Delete extends \StoreEngine\Addons\Subscription\API\Controllers\Abstracts\SubscriptionController
     {
-        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper, \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema, \StoreEngine\Addons\Subscription\Traits\Scheduler;
+        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper;
+        use \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
+        use \StoreEngine\Addons\Subscription\Traits\Scheduler;
         protected string $route = '(?P<id>[\d]+)';
         public function args(): array
         {
@@ -23734,7 +24060,8 @@ namespace StoreEngine\Addons\Subscription\API\Controllers {
     }
     class Item extends \StoreEngine\Addons\Subscription\API\Controllers\Abstracts\SubscriptionController
     {
-        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper, \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
+        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper;
+        use \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
         protected string $route = '(?P<id>[\d]+)';
         public function args(): array
         {
@@ -23745,7 +24072,8 @@ namespace StoreEngine\Addons\Subscription\API\Controllers {
     }
     class Items extends \StoreEngine\Addons\Subscription\API\Controllers\Abstracts\SubscriptionController
     {
-        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper, \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
+        use \StoreEngine\Addons\Subscription\API\Controllers\Traits\Helper;
+        use \StoreEngine\Addons\Subscription\API\Schema\SubscriptionSchema;
         protected string $route = '';
         public function read(\WP_REST_Request $request): \WP_REST_Response
         {
@@ -24434,7 +24762,6 @@ namespace StoreEngine\Addons\Subscription\Classes {
         /**
          * Return an array of subscription status types.
          * Follows the conventional order-status set.
-         *
          */
         public static function get_subscription_statuses(): array
         {
@@ -25457,7 +25784,7 @@ namespace StoreEngine\Addons\Subscription\Classes {
          *
          * @param \StoreEngine\Classes\Cart $cart The cart to display the total for.
          */
-        public static function cart_totals_order_total_html(\StoreEngine\Classes\Cart $cart)
+        public static function cart_totals_order_total_html(\StoreEngine\Classes\Cart $cart, ?float $total_override = null)
         {
         }
         /**
@@ -25726,6 +26053,16 @@ namespace StoreEngine\Addons\Subscription\Events {
     {
         const META_KEY = '_storeengine_recurring_coupons';
         /**
+         * Coupon terms as they were at signup (code => id, name, settings), so editing
+         * or deleting the coupon later does not change an existing subscriber's deal.
+         */
+        const SNAPSHOT_META_KEY = '_storeengine_recurring_coupon_snapshots';
+        /**
+         * Set on a renewal order for the coupons it was discounted with. The renewals
+         * left are only counted down once that order is actually paid.
+         */
+        const PENDING_META_KEY = '_storeengine_recurring_coupons_pending';
+        /**
          * Codes currently being re-applied at renewal, so the validation-bypass
          * filter only relaxes checks for those specific coupons.
          *
@@ -25733,6 +26070,40 @@ namespace StoreEngine\Addons\Subscription\Events {
          */
         protected static array $applying = [];
         public static function init(): void
+        {
+        }
+        /**
+         * The coupon a subscription should be discounted with: the signup snapshot when
+         * there is one, otherwise (subscriptions created before snapshots) the live coupon.
+         */
+        public static function get_coupon(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription, string $code): ?\StoreEngine\Classes\Coupon
+        {
+        }
+        /**
+         * Preview what recurring-discount coupons will take off each renewal.
+         *
+         * Display only. The recurring cart itself stays coupon-free because it is
+         * what the subscription is built from; the discount is applied to renewal
+         * orders later (see apply_to_renewal()). Tax is not recalculated here.
+         *
+         * @param \StoreEngine\Classes\Cart                  $recurring_cart Recurring (coupon-free) cart.
+         * @param array<string, \StoreEngine\Classes\Coupon> $coupons        Coupons applied to the checkout cart.
+         *
+         * @return array{discount: float, total: float, rows: array<string, array{coupon: \StoreEngine\Classes\Coupon, discount: float, cycles: int}>}
+         */
+        public static function get_preview(\StoreEngine\Classes\Cart $recurring_cart, array $coupons): array
+        {
+        }
+        /**
+         * What the next renewal will be discounted by, for display on plan pages.
+         *
+         * Reads the coupons remembered at checkout (META_KEY) and skips exhausted ones.
+         *
+         * @param \StoreEngine\Addons\Subscription\Classes\Subscription $subscription Subscription to inspect.
+         *
+         * @return array{discount: float, total: float, rows: array<string, array{coupon: \StoreEngine\Classes\Coupon, discount: float, remaining: int}>}
+         */
+        public static function get_upcoming(\StoreEngine\Addons\Subscription\Classes\Subscription $subscription): array
         {
         }
         /**
@@ -25759,6 +26130,28 @@ namespace StoreEngine\Addons\Subscription\Events {
          * @return \StoreEngine\Classes\Order
          */
         public function apply_to_renewal(\StoreEngine\Classes\Order $order, ?\StoreEngine\Addons\Subscription\Classes\Subscription $subscription = null): \StoreEngine\Classes\Order
+        {
+        }
+        /**
+         * Use the signup snapshot when a renewal order's coupons are recalculated.
+         *
+         * @param \StoreEngine\Classes\Coupon|null $coupon      Coupon loaded from the database.
+         * @param string      $code        Coupon code.
+         * @param mixed       $coupon_item Order coupon line item.
+         * @param mixed       $order       Order being recalculated.
+         *
+         * @return \StoreEngine\Classes\Coupon|null
+         */
+        public function use_snapshot_on_recalculate($coupon, $code, $coupon_item, $order)
+        {
+        }
+        /**
+         * Count down a recurring coupon's renewals once the renewal order is paid.
+         *
+         * @param \StoreEngine\Classes\Order  $order  Order whose paid status changed.
+         * @param string $status New paid status.
+         */
+        public function count_paid_renewal($order, $status): void
         {
         }
         /**
@@ -27638,32 +28031,28 @@ namespace StoreEngine\Admin {
     class SatellitePlugins
     {
         /**
-         * StoreEngine Payments — plugin basename + store product id + free download URL.
+         * StoreEngine Payments — plugin basename + store product id.
          */
         const PAYMENTS_BASENAME = 'storeengine-payments/storeengine-payments.php';
         const PAYMENTS_PRODUCT_ID = 369;
-        const PAYMENTS_DOWNLOAD_URL = 'https://store.kodezen.com/se-download/free/storeengine-payments/latest/';
         /**
-         * StoreEngine Connectors — plugin basename + store product id + free download URL.
+         * StoreEngine Connectors — plugin basename + store product id.
          */
         const CONNECTORS_BASENAME = 'storeengine-connectors/storeengine-connectors.php';
         const CONNECTORS_PRODUCT_ID = 386;
-        const CONNECTORS_DOWNLOAD_URL = 'https://store.kodezen.com/se-download/free/storeengine-connectors/latest/';
         /**
          * StoreEngine Bricks Addons — page-builder companion (no provider catalog).
          */
         const BRICKS_BASENAME = 'storeengine-bricks-addons/storeengine-bricks-addons.php';
         const BRICKS_PRODUCT_ID = 171;
-        const BRICKS_DOWNLOAD_URL = 'https://store.kodezen.com/se-download/free/storeengine-bricks-addons/latest/';
         /**
          * StoreEngine Elementor Addons — page-builder companion (no provider catalog).
          */
         const ELEMENTOR_BASENAME = 'storeengine-elementor-addons/storeengine-elementor-addons.php';
         const ELEMENTOR_PRODUCT_ID = 160;
-        const ELEMENTOR_DOWNLOAD_URL = 'https://store.kodezen.com/se-download/free/storeengine-elementor-addons/latest/';
         /**
          * Static metadata for every external ("satellite") companion plugin that the
-         * Add-ons screen can offer to download / one-click install. Live install
+         * Add-ons screen can offer to one-click install. Live install
          * state (active/installed) is layered on in get_teaser_data().
          *
          * `kind`:
@@ -27680,10 +28069,10 @@ namespace StoreEngine\Admin {
         }
         /**
          * Companion plugin keys accepted by install_and_activate() → their install
-         * metadata (basename, download URL, display name). Central so the ajax
+         * metadata (basename, display name). Central so the ajax
          * endpoint never trusts a client-supplied URL — the key is the only input.
          *
-         * @return array<string, array{basename:string, url:string, name:string}>
+         * @return array<string, array{basename:string, name:string}>
          */
         protected static function registry(): array
         {
@@ -27697,28 +28086,18 @@ namespace StoreEngine\Admin {
         {
         }
         /**
-         * Where the "Install StoreEngine Payments" teaser downloads from. Filterable
-         * so a site can repoint it (e.g. to a future WordPress.org listing).
+         * Whether a companion plugin is listed on WordPress.org, so one-click install
+         * can fetch it there. None are yet: until then the cards offer Download only.
+         * Flip per plugin with the `storeengine/satellite/on_worg` filter once listed.
          */
-        public static function payments_download_url(): string
+        public static function is_on_worg(string $key): bool
         {
         }
         /**
-         * Where the "Install StoreEngine Connectors" teaser downloads from. Filterable.
+         * Whether something (StoreEngine Pro) installs this companion from outside
+         * WordPress.org. Free never downloads from anywhere else on its own.
          */
-        public static function connectors_download_url(): string
-        {
-        }
-        /**
-         * Where the "Install StoreEngine Bricks Addons" teaser downloads from. Filterable.
-         */
-        public static function bricks_download_url(): string
-        {
-        }
-        /**
-         * Where the "Install StoreEngine Elementor Addons" teaser downloads from. Filterable.
-         */
-        public static function elementor_download_url(): string
+        public static function has_external_installer(string $key): bool
         {
         }
         /**
@@ -27732,19 +28111,37 @@ namespace StoreEngine\Admin {
         {
         }
         /**
-         * Download, install, and activate a companion plugin from the StoreEngine
-         * store — the one-click path behind the teaser button.
+         * Install and activate a companion plugin — the one-click path behind the
+         * teaser button.
          *
          * The plugin is resolved from $key against the server-side registry(), so the
          * package URL is never taken from the client. Idempotent: a plugin already
          * active short-circuits; installed-but-inactive is just activated; otherwise
-         * it is downloaded from the free store URL and activated.
+         * it is installed from WordPress.org, or by StoreEngine Pro when it is not
+         * listed there, and activated.
          *
          * @param string $key 'payments' | 'connectors'.
          *
          * @return array{status:string, message:string, plugin:string}|\WP_Error
          */
         public static function install_and_activate(string $key)
+        {
+        }
+        /**
+         * Install a companion that is not on WordPress.org. Free never downloads
+         * from elsewhere; StoreEngine Pro hooks in to do it.
+         *
+         * @return true|\WP_Error
+         */
+        protected static function install_external(string $key, string $basename, string $name)
+        {
+        }
+        /**
+         * Install a companion from WordPress.org.
+         *
+         * @return true|\WP_Error
+         */
+        protected static function install_from_worg(string $basename, string $name)
         {
         }
         /**
@@ -31301,6 +31698,12 @@ namespace StoreEngine\API {
         protected function csv_row_to_tax_row(array $raw, array $col_map): array
         {
         }
+        protected function normalize_scope(string $value): string
+        {
+        }
+        protected function normalize_type(string $value): string
+        {
+        }
         protected function find_csv_duplicate(array $row): int
         {
         }
@@ -34181,6 +34584,7 @@ namespace StoreEngine\Classes {
         }
         /**
          * Get allowed price types.
+         *
          * @return array
          */
         public function get_allowed_price_types(): array
@@ -35996,6 +36400,22 @@ namespace StoreEngine\Classes {
          */
         protected int $pinned_id = 0;
         public function __construct(?string $code = null)
+        {
+        }
+        /**
+         * Rebuild a coupon from settings saved earlier, without reading the database.
+         *
+         * Lets a subscription keep honouring the terms its subscriber signed up for
+         * after the coupon is edited, expired or deleted.
+         *
+         * @param string $code     Coupon code.
+         * @param int    $id       Original coupon post id.
+         * @param string $name     Original coupon title.
+         * @param array  $settings Settings as returned by get_settings() when saved.
+         *
+         * @return static
+         */
+        public static function from_snapshot(string $code, int $id, string $name, array $settings): self
         {
         }
         public function get_id(): int
@@ -38029,7 +38449,7 @@ namespace StoreEngine\Classes\Exceptions {
         public function to_array($options = null): array
         {
         }
-        public function __toJsonString($flags = 0, $depth = 512): string
+        public function toJsonString($flags = 0, $depth = 512): string
         {
         }
         public static function from_wp_error(\WP_Error $wp_error): self
@@ -38652,7 +39072,32 @@ namespace StoreEngine\Classes {
         {
         }
         /**
+         * Statuses that are not a real order from the customer's point of view: a
+         * checkout that was never placed (empty / draft / auto-draft), a failed
+         * payment attempt, or a trashed order.
+         *
+         * @return string[]
+         */
+        public static function get_unplaced_statuses(): array
+        {
+        }
+        /**
+         * How many orders the customer has actually placed. This is the same set the
+         * customer dashboard lists, so the number on the dashboard card always matches
+         * the list.
+         *
+         * @param int $customer_id
+         *
+         * @return int
+         */
+        public static function get_total_placed(int $customer_id): int
+        {
+        }
+        /**
          * Get customer's total spent based on existing order data.
+         *
+         * Paid orders only (see Helper::get_order_paid_statuses()), net of refunds, so
+         * it matches the totals kept on the customer and used by reports.
          *
          * @param int $customer_id
          *
@@ -42744,6 +43189,12 @@ namespace StoreEngine\Classes {
         public static function adjust_stock(int $product_id, int $variation_id, string $action, float $qty, string $reason = 'manual', string $note = ''): array
         {
         }
+        /**
+         * Result for a manual "remove" that asks for more than is on hand.
+         */
+        protected static function insufficient_stock_result(float $qty, float $qty_before, int $product_id): array
+        {
+        }
         protected static function compute_new_qty(string $action, float $qty, float $current): float
         {
         }
@@ -43135,10 +43586,12 @@ namespace StoreEngine\Classes {
          * @param float|string $price Price to calc tax on.
          * @param array $rates Rates to apply.
          * @param boolean $price_includes_tax Whether the passed price has taxes included.
+         * @param float $qty Units on the line, for fixed per-unit rates. Pass 0 where
+         *                   fixed rates must not apply (discounts, shipping, fees).
          *
          * @return array                       Array of rates + prices after tax.
          */
-        public static function calc_tax($price, array $rates, bool $price_includes_tax = false): array
+        public static function calc_tax($price, array $rates, bool $price_includes_tax = false, float $qty = 1): array
         {
         }
         /**
@@ -43177,7 +43630,7 @@ namespace StoreEngine\Classes {
          *
          * @return array
          */
-        public static function calc_inclusive_tax($price, array $rates): array
+        public static function calc_inclusive_tax($price, array $rates, float $qty = 1): array
         {
         }
         /**
@@ -43188,7 +43641,25 @@ namespace StoreEngine\Classes {
          *
          * @return array
          */
-        public static function calc_exclusive_tax($price, array $rates): array
+        public static function calc_exclusive_tax($price, array $rates, float $qty = 1): array
+        {
+        }
+        public const SCOPE_ANY = 'any';
+        public const SCOPE_SAME_REGION = 'same_region';
+        public const SCOPE_OTHER_REGION = 'other_region';
+        public const TYPE_PERCENT = 'percent';
+        public const TYPE_FIXED = 'fixed_per_unit';
+        /** Whether a matched rate is a fixed amount per unit rather than a percentage. */
+        public static function is_fixed(array $rate): bool
+        {
+        }
+        /**
+         * Whether a rate's scope fits the buyer's location relative to the store's
+         * base location. "Same region" = same country and state as the store; lets
+         * merchants split taxes by intra- vs inter-region supply (e.g. two local
+         * taxes vs one integrated tax) without country-specific code.
+         */
+        public static function scope_matches(string $scope, string $country, string $state): bool
         {
         }
         /**
@@ -43652,7 +44123,21 @@ namespace StoreEngine\Classes\Tax {
         protected ?float $tax_rate_shipping_rate = null;
         protected int $tax_rate_order = 0;
         protected string $tax_rate_class = '';
-        protected array $formats = ['tax_rate_id' => '%d', 'tax_rate_country' => '%s', 'tax_rate_state' => '%s', 'tax_rate' => '%f', 'tax_rate_name' => '%s', 'tax_rate_priority' => '%d', 'tax_rate_compound' => '%d', 'tax_rate_shipping' => '%d', 'tax_rate_shipping_rate' => '%f', 'tax_rate_order' => '%d', 'tax_rate_class' => '%s'];
+        protected string $tax_rate_scope = 'any';
+        protected string $tax_rate_type = 'percent';
+        protected array $formats = ['tax_rate_id' => '%d', 'tax_rate_country' => '%s', 'tax_rate_state' => '%s', 'tax_rate' => '%f', 'tax_rate_name' => '%s', 'tax_rate_priority' => '%d', 'tax_rate_compound' => '%d', 'tax_rate_shipping' => '%d', 'tax_rate_shipping_rate' => '%f', 'tax_rate_order' => '%d', 'tax_rate_class' => '%s', 'tax_rate_scope' => '%s', 'tax_rate_type' => '%s'];
+        public function get_tax_rate_scope(): string
+        {
+        }
+        public function set_tax_rate_scope(string $tax_rate_scope): void
+        {
+        }
+        public function get_tax_rate_type(): string
+        {
+        }
+        public function set_tax_rate_type(string $tax_rate_type): void
+        {
+        }
         public function get_tax_rate_shipping_rate(): ?float
         {
         }
@@ -46317,6 +46802,13 @@ namespace StoreEngine {
         {
         }
         /**
+         * Backfills the rate `scope` (any | same_region | other_region) and `type`
+         * (percent | fixed_per_unit) columns on installs created before they existed.
+         */
+        public static function ensure_tax_rate_scope_type_columns(): void
+        {
+        }
+        /**
          * Seeds the default `standard` tax class on a fresh install so the
          * admin UI always has at least one class to show. Idempotent — a
          * flag option gates the one-time run and the slug UNIQUE index
@@ -46694,6 +47186,31 @@ namespace StoreEngine\Frontend {
         public static function init()
         {
         }
+        public static function flush_auto_apply_cache(): void
+        {
+        }
+        /**
+         * @param string   $new_status New post status.
+         * @param string   $old_status Old post status.
+         * @param \WP_Post $post       Post object.
+         */
+        public static function flush_auto_apply_cache_on_status($new_status, $old_status, $post): void
+        {
+        }
+        /**
+         * @param int $post_id Deleted post ID.
+         */
+        public static function flush_auto_apply_cache_on_delete($post_id): void
+        {
+        }
+        /**
+         * @param int|int[] $meta_id   Meta ID(s).
+         * @param int       $object_id Post ID.
+         * @param string    $meta_key  Meta key.
+         */
+        public static function flush_auto_apply_cache_on_meta($meta_id, $object_id, $meta_key): void
+        {
+        }
         /**
          * Apply a coupon code supplied via the URL to the current cart.
          */
@@ -47009,6 +47526,105 @@ namespace StoreEngine\Hooks {
         {
         }
     }
+    /**
+     * Checkout consent checkboxes: "I agree to the terms and conditions" and the
+     * newsletter opt-in.
+     *
+     * Each is switched on, worded and made required/optional in Cart & Checkout
+     * settings. The text comes from a rich-text field where the store owner links
+     * any words (a site page, or any URL).
+     *
+     * Every checkout surface places orders through CheckoutService::validate(), so
+     * the checks below cover them all. The classic checkout posts flat fields
+     * (`checkout_terms`, `subscribe_to_email`); the instant checkout renders the
+     * boxes from the consent snapshot and posts `storeengine_consent[<key>]`, which
+     * validate_data maps back onto the flat fields.
+     */
+    class CheckoutConsent
+    {
+        /**
+         * Box key => posted field. The key is also the settings prefix.
+         */
+        const FIELDS = ['terms' => 'checkout_terms', 'newsletter' => 'subscribe_to_email'];
+        public static function init()
+        {
+        }
+        public static function is_enabled(string $key): bool
+        {
+        }
+        public static function is_required(string $key): bool
+        {
+        }
+        /**
+         * Enabled boxes as key => [ field, label, required ].
+         *
+         * @return array<string, array{field: string, label: string, required: bool}>
+         */
+        public static function get_boxes(): array
+        {
+        }
+        /**
+         * Checkbox label HTML: the saved text, cut down to inline markup.
+         */
+        public static function get_label_html(string $key): string
+        {
+        }
+        /**
+         * The first link in the terms checkbox text.
+         */
+        public static function get_terms_url(): string
+        {
+        }
+        /**
+         * The site page the terms text links to (for PDF attachments), or 0.
+         */
+        public static function get_terms_page_id(): int
+        {
+        }
+        protected static function is_phone_only_contact(): bool
+        {
+        }
+        public static function render()
+        {
+        }
+        public static function is_checked(array $data, string $field): bool
+        {
+        }
+        /**
+         * @param array|\WP_Error $data
+         *
+         * @return array|\WP_Error
+         */
+        public static function map_instant_checkout_fields($data)
+        {
+        }
+        /**
+         * @param null|\WP_Error $result
+         * @param array         $data
+         *
+         * @return null|\WP_Error
+         */
+        public static function validate($result, $data)
+        {
+        }
+        public static function record(\StoreEngine\Classes\Order $order, array $payload)
+        {
+        }
+        /**
+         * Mark the order's customer as subscribed and add them to GemCRM when it's active.
+         */
+        protected static function subscribe(\StoreEngine\Classes\Order $order)
+        {
+        }
+        /**
+         * Adds the boxes to the instant checkout, ahead of any addon consent boxes.
+         *
+         * @param mixed $checkboxes
+         */
+        public static function snapshot($checkboxes): array
+        {
+        }
+    }
     class DownloadPermissionHooks
     {
         protected static ?\StoreEngine\Hooks\DownloadPermissionHooks $instance = null;
@@ -47286,26 +47902,31 @@ namespace StoreEngine\Integrations {
         protected static array $integrations = [];
         /**
          * Integration type id.
+         *
          * @var string
          */
         protected string $id;
         /**
          * Integration display name.
+         *
          * @var string
          */
         protected string $label;
         /**
          * Integration items label.
+         *
          * @var string
          */
         protected string $items_label;
         /**
          * Integration logo/icon.
+         *
          * @var string
          */
         protected string $logo;
         /**
          * Whether the integration is enabled (with all the dependencies).
+         *
          * @var bool
          */
         protected bool $isEnabled = false;
@@ -47325,6 +47946,7 @@ namespace StoreEngine\Integrations {
         }
         /**
          * Sets-up class props before dispatch.
+         *
          * @return void
          */
         abstract public function setup(): void;
@@ -47514,6 +48136,7 @@ namespace StoreEngine\Integrations {
         }
         /**
          * Find integration objects by integration item (foreign) id.
+         *
          * @param $integration_id
          *
          * @return array<\StoreEngine\Classes\Data\IntegrationRepositoryData>
@@ -48991,7 +49614,7 @@ namespace StoreEngine\Reports {
          * Bumped when the shape of the aggregated rows changes; a site whose data
          * was built by an older version gets a fresh backfill.
          */
-        const DATA_VERSION = 3;
+        const DATA_VERSION = 4;
         /**
          * Order statuses that count as revenue.
          */
@@ -49077,6 +49700,20 @@ namespace StoreEngine\Reports {
          * Build the fact row + refunded line detail for one refund.
          */
         public static function build_refund_fact(int $refund_id): ?array
+        {
+        }
+        /**
+         * Split an order-level refund across the order's product lines by their
+         * share of the order total, so a full refund gives each product exactly its
+         * line value and the shipping / fee part stays off the product rows.
+         *
+         * @param float $amount      Refunded amount.
+         * @param array $order_lines [ product_id, variation_id, price_id, value (line total + tax) ].
+         * @param float $order_total Parent order total.
+         *
+         * @return array Refund lines shaped like build_refund_fact()'s.
+         */
+        public static function allocate_refund_lines(float $amount, array $order_lines, float $order_total): array
         {
         }
         /**
@@ -52918,7 +53555,6 @@ namespace StoreEngine\Utils {
          * Downloads a URL to a local temporary file using the WordPress HTTP API.
          * Please note that the calling function must delete or move the file.
          *
-         *
          * @param string $url The URL of the file to download.
          * @param int $timeout The timeout for the request to download the file.
          *                     Default 300 seconds.
@@ -53347,7 +53983,6 @@ namespace StoreEngine\Utils\traits {
          * @return string
          * @deprecated
          * @use \StoreEngine\Utils\Formatting::price()
-         *
          */
         public static function currency_format($price, array $args = []): string
         {
@@ -53556,7 +54191,6 @@ namespace StoreEngine\Utils\traits {
         /**
          * Attempts activation of plugin in a "sandbox" and redirects on success.
          *
-         *
          * @param string $plugin Path to the plugin file relative to the plugins directory.
          * @param string $redirect Optional. URL to redirect to.
          * @param bool $network_wide Optional. Whether to enable the plugin for all sites in the network
@@ -53565,7 +54199,6 @@ namespace StoreEngine\Utils\traits {
          *
          * @return null|\WP_Error Null on success, WP_Error on invalid file.
          * @since 1.6.4
-         *
          */
         public static function activate_plugin(string $plugin, string $redirect = '', bool $network_wide = false, bool $silent = false): ?\WP_Error
         {
@@ -53627,7 +54260,17 @@ namespace StoreEngine\Utils\Traits {
 namespace StoreEngine\Utils {
     class Helper extends \StoreEngine\Utils\Template
     {
-        use \StoreEngine\Utils\traits\Customer, \StoreEngine\Utils\traits\Pages, \StoreEngine\Utils\traits\Order, \StoreEngine\Utils\traits\Currency, \StoreEngine\Utils\traits\Gateway, \StoreEngine\Utils\traits\Product, \StoreEngine\Utils\traits\Integration, \StoreEngine\Utils\traits\Attribute, \StoreEngine\Utils\traits\DownloadPermission, \StoreEngine\Utils\traits\ThemePlugin, \StoreEngine\Utils\Traits\Repository;
+        use \StoreEngine\Utils\traits\Customer;
+        use \StoreEngine\Utils\traits\Pages;
+        use \StoreEngine\Utils\traits\Order;
+        use \StoreEngine\Utils\traits\Currency;
+        use \StoreEngine\Utils\traits\Gateway;
+        use \StoreEngine\Utils\traits\Product;
+        use \StoreEngine\Utils\traits\Integration;
+        use \StoreEngine\Utils\traits\Attribute;
+        use \StoreEngine\Utils\traits\DownloadPermission;
+        use \StoreEngine\Utils\traits\ThemePlugin;
+        use \StoreEngine\Utils\Traits\Repository;
         const PRODUCT_POST_TYPE = STOREENGINE_PLUGIN_SLUG . '_product';
         const PRODUCT_CATEGORY_TAXONOMY = self::PRODUCT_POST_TYPE . '_category';
         const PRODUCT_ATTRIBUTE_TAXONOMY = self::PRODUCT_POST_TYPE . '_attribute';
@@ -54058,7 +54701,7 @@ namespace StoreEngine\Utils {
          * Check if current page is dashboard index or endpoint page.
          *
          * @return bool|int Returns zero (0) if called outside of dashboard/endpoint page. Returns (bool) true on
-         * 					dashboard index or (bool) false on endpoint page.
+         *                  dashboard index or (bool) false on endpoint page.
          */
         public static function is_dashboard_index()
         {
