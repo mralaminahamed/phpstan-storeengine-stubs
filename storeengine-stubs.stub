@@ -5825,6 +5825,39 @@ namespace StoreEngine\Addons\Email\Traits {
         public function mail_send($to, string $subject, string $body, $headers, $args = [])
         {
         }
+        /**
+         * Whether the given wp_mail() headers declare a text/plain body.
+         *
+         * @param string|string[] $headers
+         */
+        protected function is_plain_text_mail($headers): bool
+        {
+        }
+        /**
+         * Last pass over a plain-text body, after every placeholder is filled in.
+         *
+         * Placeholder values (pay buttons, formatted prices, review text, discount
+         * blocks …) are HTML. They are inserted after prepare_text_body() has run,
+         * so without this the recipient sees raw tags and entities.
+         */
+        protected function finalize_plain_text(string $body): string
+        {
+        }
+        /**
+         * Decode entities, except into "<" or ">": placeholder values such as customer
+         * names are escaped upstream, and a plain-text body must never gain live tags
+         * from them (some mail log viewers render the body as HTML).
+         */
+        private static function decode_plain_text_entities(string $text): string
+        {
+        }
+        /**
+         * Turn links into "Label: URL" (just the URL when the label is the URL itself,
+         * just the label when the link is a dummy "#").
+         */
+        private function plain_text_links(string $html): string
+        {
+        }
         public function get_from_name($name)
         {
         }
@@ -8127,10 +8160,15 @@ namespace StoreEngine\Addons\EuVat\Classes {
         private function validate_soap(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
         {
         }
-        private function validate_curl(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        /**
+         * Same request, forced onto the WP HTTP API's PHP-streams transport. Some
+         * hosts' curl/OpenSSL builds fail the VIES TLS handshake ("unexpected eof")
+         * while PHP streams succeed.
+         */
+        private function validate_streams(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
         {
         }
-        private function validate_fgc(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): ?array
+        private function validate_curl(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat, string $label = 'curl'): ?array
         {
         }
         private function validate_hmrc(\StoreEngine\Addons\EuVat\Classes\VatNumber $vat): array
@@ -10568,6 +10606,35 @@ namespace StoreEngine\Addons\Membership {
         {
         }
         protected function can_view(int $item_id, int $user_id): bool
+        {
+        }
+    }
+    /**
+     * REST controller for access groups.
+     *
+     * The stock posts controller serves *published* posts of any show_in_rest type
+     * to anyone, and registered meta is returned on read regardless of its
+     * auth_callback. That exposed every group's rules (protected content, excluded
+     * items, required roles/user meta) to unauthenticated visitors. Only the admin
+     * UI consumes this route, so reads require the cap that manages groups.
+     */
+    class RestGroupsController extends \WP_REST_Posts_Controller
+    {
+        const CAPABILITY = 'edit_storeengine_groups';
+        public function get_items_permissions_check($request)
+        {
+        }
+        public function get_item_permissions_check($request)
+        {
+        }
+        /**
+         * Also blocks the `_embed` / link-follow path, which reads posts via
+         * check_read_permission() rather than the route permission callbacks.
+         */
+        public function check_read_permission($post)
+        {
+        }
+        protected function forbidden(): \WP_Error
         {
         }
     }
@@ -23461,6 +23528,13 @@ namespace StoreEngine\Addons\Stripe\Tax {
     class StripeTaxBridge
     {
         /**
+         * Customer tax data (VAT / EIN numbers) is PII. User meta defaults to
+         * `view` context, which /wp/v2/users serves publicly for any user with
+         * published posts — and `auth_callback` only gates writes. Edit-only keeps
+         * it to callers who can edit that user.
+         */
+        private const EDIT_ONLY_REST = ['schema' => ['type' => 'string', 'context' => ['edit']]];
+        /**
          * Cached calculation for the current request, keyed by cart hash.
          *
          * @var array|null
@@ -26622,6 +26696,58 @@ namespace StoreEngine\Addons\Webhooks\Classes {
         {
         }
     }
+    /**
+     * REST controller for webhook config post types (outgoing + incoming).
+     *
+     * The stock posts controller serves *published* posts of any show_in_rest type
+     * to anyone, and registered meta is returned on read regardless of its
+     * auth_callback (that only gates writes). For webhook configs that leaked every
+     * signing secret, endpoint key and delivery URL to unauthenticated visitors.
+     * Reads now require the same capability the post type already demands for writes.
+     */
+    class RestConfigController extends \WP_REST_Posts_Controller
+    {
+        const CAPABILITY = 'manage_storeengine_settings';
+        public function get_items_permissions_check($request)
+        {
+        }
+        public function get_item_permissions_check($request)
+        {
+        }
+        /**
+         * Also blocks the `_embed` / link-follow path, which reads posts via
+         * check_read_permission() rather than the route permission callbacks.
+         */
+        public function check_read_permission($post)
+        {
+        }
+        protected function forbidden(): \WP_Error
+        {
+        }
+    }
+    /**
+     * Shared handling for webhook signing secrets (outgoing and incoming).
+     */
+    class Secret
+    {
+        /**
+         * Meta sanitize callback for signing secrets.
+         *
+         * A secret is key material: it is only ever hashed or shown in an input, never
+         * printed as HTML. sanitize_text_field() turns "<" and "&" into "&lt;" and
+         * "&amp;", so the stored (and displayed, and copied) value stopped matching the
+         * secret the signature is computed with. Keep the value as typed and only strip
+         * what cannot be part of a secret: invalid UTF-8, control characters and
+         * surrounding whitespace.
+         *
+         * @param mixed $value Raw secret.
+         *
+         * @return string
+         */
+        public static function sanitize($value): string
+        {
+        }
+    }
 }
 namespace StoreEngine\Addons\Webhooks {
     class Database
@@ -26737,15 +26863,15 @@ namespace StoreEngine\Addons\Webhooks\Incoming {
      * Received-delivery audit trail for an incoming webhook.
      *
      * Stored as a single capped, most-recent-first array in post meta (no extra
-     * table). Doubles as the idempotency ledger: a delivery id already present is a
-     * replay and is not reprocessed. Because the list is capped, dedup only covers
-     * the most recent {@see self::CAP} deliveries — acceptable for replay protection
-     * against near-duplicate retries, which is the realistic threat.
+     * table). Replay/idempotency is tracked separately in {@see self::claim()} so
+     * that audit entries (including rejected requests) can never evict it.
      */
     class DeliveryLog
     {
         const META = '_storeengine_incoming_deliveries';
         const CAP = 50;
+        const LEDGER_META = '_storeengine_incoming_seen';
+        const LEDGER_CAP = 5000;
         /**
          * Append a delivery record (most-recent-first) and trim to the cap.
          *
@@ -26786,9 +26912,17 @@ namespace StoreEngine\Addons\Webhooks\Incoming {
         {
         }
         /**
-         * Has this delivery id already been accepted (i.e. is this a replay)?
+         * Atomically claim a delivery id. Returns false when it was already accepted
+         * (a replay or a concurrent duplicate).
+         *
+         * The ledger is kept apart from the audit log: only authenticated, accepted
+         * deliveries land here, so unauthenticated junk can never evict an entry and
+         * re-open a replay. Entries expire after a TTL (comfortably longer than the
+         * timestamp window) and are bounded by a generous cap. Check-and-insert runs
+         * under a per-webhook advisory lock so two simultaneous identical requests
+         * cannot both pass.
          */
-        public static function is_seen(int $webhook_id, string $delivery_id): bool
+        public static function claim(int $webhook_id, string $delivery_id): bool
         {
         }
         /**
@@ -29505,6 +29639,15 @@ namespace StoreEngine\API {
          * Returns the gateway's process_payment() response (typically
          * `{ result: 'success', redirect: string }`).
          */
+        /**
+         * Who may pay an existing order: its customer, or anyone holding its key
+         * (the guest pay link). The `pay_for_order` cap alone is not enough — it is
+         * granted to every visitor for guest orders (customer 0), so an order id,
+         * which is sequential, would otherwise be all it takes.
+         */
+        private static function can_pay_existing_order($order, \WP_REST_Request $request): bool
+        {
+        }
         public function pay_order(\WP_REST_Request $request)
         {
         }
@@ -42345,6 +42488,43 @@ namespace StoreEngine\Classes {
         }
     }
     /**
+     * Posts controller for admin-only post types (coupons, order bumps, …).
+     *
+     * The stock posts controller serves *published* posts of any show_in_rest type
+     * to anyone, and registered meta is returned on read regardless of its
+     * auth_callback (that only gates writes). For config-style post types that
+     * leaked private data — e.g. every coupon code plus the customer emails and ids
+     * stored on it. Reads here require the post type's own `edit_posts` capability,
+     * so whoever can manage the type in the admin can still read it.
+     */
+    class RestPrivatePostsController extends \WP_REST_Posts_Controller
+    {
+        public function get_items_permissions_check($request)
+        {
+        }
+        public function get_item_permissions_check($request)
+        {
+        }
+        /**
+         * Also blocks the `_embed` / link-follow path, which reads posts via
+         * check_read_permission() rather than the route permission callbacks.
+         */
+        public function check_read_permission($post)
+        {
+        }
+        /**
+         * A post type can name a stricter cap via the `storeengine_rest_read_cap`
+         * register_post_type() arg — needed when it uses the generic `post`
+         * capability_type, whose `edit_posts` every author has.
+         */
+        protected function can_manage(): bool
+        {
+        }
+        protected function forbidden(): \WP_Error
+        {
+        }
+    }
+    /**
      * Store replies to product reviews.
      *
      * A reply is a comment of type `se_review_reply` (WordPress limits comment_type to 20 characters, so the name from the issue cannot be stored) whose parent is the
@@ -53573,6 +53753,28 @@ namespace StoreEngine\Utils {
          * @since 1.6.4
          */
         public static function get_contents(string $file)
+        {
+        }
+        /**
+         * Write a (small) string to a file via WP_Filesystem.
+         *
+         * @param string $file    Absolute path.
+         * @param string $content File contents.
+         *
+         * @return bool True on success, false if the filesystem is unavailable or the write failed.
+         */
+        public static function put_contents(string $file, string $content): bool
+        {
+        }
+        /**
+         * Delete a directory via WP_Filesystem.
+         *
+         * @param string $dir       Absolute path.
+         * @param bool   $recursive Also delete everything inside it.
+         *
+         * @return bool True on success, false if the filesystem is unavailable or the delete failed.
+         */
+        public static function rmdir(string $dir, bool $recursive = false): bool
         {
         }
         /**
